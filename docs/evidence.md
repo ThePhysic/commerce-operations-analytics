@@ -24,6 +24,22 @@ The reproducible smoke harness parses the DAG, migrates its temporary metadata, 
 
 ## Correctness demonstrations
 
+Observed on 2026-11-02: 56 source/manifest unit checks passed, and all seven
+PostgreSQL/dbt integration scenarios passed across directed runs after the
+affected changes. The integration checks covered exact reference metrics and
+dimension history; replay; late-refund publication deltas and full-rebuild
+parity; additive/breaking schema handling and clean retry; three interruption
+stages including rollback after the first view replacement; freshness and dbt
+business-quality failures; date-moving corrections and removal of empty old
+partitions; and multi-shard quarantine plus future-lifecycle rejection. These
+checks ran against a separately created `commerce_test` database, not the demo
+database. The committed suite runs all scenarios in CI.
+
+`dbt docs generate` also completed against the observed demo publication and
+produced its manifest/catalog: 16 models and 83 data tests were discovered.
+Generated runtime artifacts remain ignored; the versioned model documentation
+and the reproduction commands are committed.
+
 Run the source unit tests and the PostgreSQL/dbt integration suite against a disposable database:
 
 ```sh

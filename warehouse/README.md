@@ -71,8 +71,10 @@ that a multi-model dbt build is itself a single transaction.
 Facts retain the source ingestion run, immutable raw file path, payload hash,
 source version and ingestion timestamp; order-level fulfillment stores arrays
 of source runs and paths. Mart grain keys join back to facts. dbt `ref` and
-`source` dependencies supply model lineage; generated manifests, catalog and
-run-results artifacts are retained under the runtime artifact directory.
+`source` dependencies supply model lineage. Builds retain their manifest and
+run-results artifacts under the runtime artifact directory. The README's
+`dbt docs generate` command creates the catalog in its chosen documentation
+output directory.
 
 Schema tests cover required/unique fields, relationships and accepted values.
 Singular tests cover line amounts, refund limits, event chronology, inventory
