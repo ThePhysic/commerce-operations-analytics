@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "commerce-operations-analytics"
+version = "0.1.0"
+description = "Synthetic, auditable commerce analytics pipelines"
+requires-python = ">=3.12,<3.13"
+dependencies = ["dbt-core==1.9.10", "dbt-postgres==1.9.1", "psycopg[binary]==3.2.9", "psutil==7.0.0"]
+
+[project.optional-dependencies]
+dev = ["pytest==8.4.1", "ruff==0.12.2"]
+
+[project.scripts]
+commerce = "commerce.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: needs a dedicated disposable PostgreSQL database"]
+
+[tool.ruff]
+line-length = 110
+

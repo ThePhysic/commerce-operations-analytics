@@ -1,0 +1,25 @@
+# Shared implementation contract
+
+Core only; Python package `commerce`, dbt PostgreSQL project `warehouse`, source contracts JSON, deterministic fixtures, Airflow local optional UI, Docker Compose. All commerce data synthetic. Root owns runtime/ingestion/publishing/CLI/integration; agents own scopes assigned in messages. Do not commit without root instruction.
+
+## Source interface
+
+`generate(output: Path, *, days=7, orders_per_day=20, seed=42) -> Path` returns manifest.json. Manifest object: synthetic=true, seed, files list of {source, path (relative), sha256, schema_version:1, partition: YYYY-MM-DD, row_count}. Sources: `order_lines` CSV and remaining JSONL (`refunds`, `inventory`, `products`, `locations`). Every record has integer `version` >=1. Monetary values integer cents. UTC ISO timestamps with +00:00/Z, YYYY-MM-DD dates. No PII. Source-specific fields:
+
+- order_lines: line_id, order_id, location_id, product_id, sale_date, quantity (positive int), unit_price_cents, discount_cents, status (paid/fulfilled/cancelled), paid_at (nullable), fulfilled_at (nullable), version. Cancelled lines contribute zero sales. Per-order lifecycle timestamps/status consistent across lines. Business key line_id.
+- refunds: refund_id, line_id, refund_date, amount_cents (positive), version. Key refund_id.
+- inventory: snapshot_id, location_id, product_id, snapshot_date, expected_quantity, actual_quantity (nonnegative int), version. Key snapshot_id; one location/product/date.
+- products: product_id, name, category, effective_at (UTC), version. Key product_id + effective_at (history rows).
+- locations: location_id, name, region, effective_at (UTC), version. Key location_id + effective_at.
+
+Contract files source JSON contain required/type/key/field definitions/cadence/owner/null policy. Additive unknown fields allowed, missing/type-invalid required fields quarantined; breaking schema_version rejects file. Contracts and generator owned by generator agent.
+
+## Warehouse interface
+
+Canonical durable source table `landing.records` fields source text, business_key text, version int, payload jsonb, payload_hash text, raw_path text, run_id text, ingested_at timestamptz. Unique source/business_key. Ingestion uses higher version; same-version different payload is conflict/quarantine. All source current records retained across runs. Raw files immutable content addressed. Provenance attached through models. Staging views select JSON casts from landing.records filtered source. Names stg_order_lines/stg_refunds/stg_inventory/stg_products/stg_locations.
+
+Each run dbt uses isolated target schema `build_<uuidhex>` via DBT_TARGET_SCHEMA and env-based profiles (PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE). `COMMERCE_RUN_ID` set. `meta.reprocess_dates(run_id text, business_date date)` lists dates selected for reprocessing. Incremental fact/mart models: root clones prior physical tables into candidate schema, then dbt pre-hook deletes rows of selected date partitions before inserting selected-date data (supports rows disappearing). Shared macro handles this. Dimensions rebuild each run. Full refresh builds entire warehouse. Candidate schema has source facts and final marts, tests run before publish. Root atomically publishes analytics views, preserves physical previous schema for history. Publication history snapshots + source manifests explain deltas.
+
+Facts: fct_order_line partition sale_date; fct_refund partition sale_date (joins line_id to original sale, also refund_date); fct_fulfillment partition sale_date (one order); fct_inventory_snapshot partition snapshot_date. Marts: mart_daily_location_sales partition sale_date, mart_refund_rate partition sale_date, mart_fulfillment_sla partition sale_date, mart_inventory_variance partition snapshot_date; optional mart_refunds_by_event_date full table for refund reporting. Dim history uses lead(effective_at), history surrogate md5(key/effective_at), expose current. Sales gross=quantity*price excluding cancelled; discounts line-level; net=gross-discounts-attributable refunds; taxes/tips absent. median/p95 via percentile_cont. Refund rate=distinct refunded orders / noncancelled orders, cancellation rate cancelled/all orders. Stockout=actual_quantity=0; variance=actual-expected. Multiple refund rows aggregated before joining sales prevents fanout. Retain provenance fields.
+
+Root pipeline uses dbt build (all tests) then transactionally swaps stable analytics views; ledger meta.runs, meta.files, meta.quarantine, meta.publications, meta.publication_sources, meta.reprocess_dates owned by root. One advisory lock serializes ingestion+build+publication. Latest source times vs deterministic source partition as-of date used for reproducible freshness; wall-clock freshness exposed separately. CLI: generate --output PATH --days N --orders-per-day N --seed N; run --manifest PATH [--full-refresh] [--start YYYY-MM-DD --end YYYY-MM-DD] [--as-of YYYY-MM-DD] [--lookback-days N] [--fail-at after-ingest|before-publish]; status; query --name sales|refunds|fulfillment|inventory|changes; demo; benchmark. DB URL env COMMERCE_DATABASE_URL or PG*.

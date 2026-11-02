@@ -1,0 +1,2 @@
+"""Reproducible synthetic commerce analytics."""
+
