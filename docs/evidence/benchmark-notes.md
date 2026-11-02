@@ -2,10 +2,19 @@
 
 The complete machine-readable observations are in [benchmark.json](benchmark.json).
 All business records are deterministic synthetic data with seed 42. Measurements
-began at 2026-11-02 23:04:54 UTC. The native client ran on Windows 11 with Python
+began at 2026-11-02 23:18:19 UTC. The native client ran on Windows 11 with Python
 3.12.15, 16 logical CPUs and 31.21 GiB of host memory. PostgreSQL 16.10 ran through
 the project's local Docker service, capped at one CPU and 384 MiB. The native
 Python/dbt client did not run inside the runner container's memory or CPU cap.
+
+This collection includes the durable accepted-source reporting-horizon guard and
+record-specific quarantine resolution policy introduced during review. After the
+measurements were collected, JSON parsing gained strict nonstandard/non-finite
+number checks and explicit malformed-JSON quarantine diagnostics. Generated
+benchmark inputs contain finite integers and strings and do not exercise those
+error paths. No observed measurements were edited, and the benchmark was not
+rerun after that narrow parser change; the timings describe the measured revision
+rather than an exact remeasurement of the final parser callbacks.
 
 The recorded command was:
 
@@ -34,8 +43,7 @@ different source update work, rather than isolated transformation timings.
 Each pair compares the saved daily-location sales snapshots, including gross,
 discounts, refunds, and net sales. All six comparisons passed. The report's
 `sales_totals_identical` field describes this assertion; broader reference-answer
-and backfill parity checks belong to the integration suite. The assertion label
-was clarified after collection without changing any observed measurements.
+and backfill parity checks belong to the integration suite.
 
 ## Observations
 
@@ -45,11 +53,11 @@ latency is the median of all 30 client-roundtrip observations per variant.
 
 | Workload | Order lines | Incremental selected lines | Incremental runtime | Full runtime | Incremental peak RSS | Full peak RSS | Incremental query | Full query |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 100 orders/day | 938 | 134 | 21.00 s | 18.67 s | 175.97 MiB | 175.88 MiB | 1.914 ms | 1.624 ms |
-| 1,000 orders/day | 9,338 | 1,334 | 34.98 s | 19.29 s | 187.20 MiB | 186.31 MiB | 2.273 ms | 2.473 ms |
+| 100 orders/day | 938 | 134 | 17.37 s | 15.27 s | 175.86 MiB | 176.42 MiB | 1.616 ms | 1.594 ms |
+| 1,000 orders/day | 9,338 | 1,334 | 30.36 s | 19.60 s | 187.41 MiB | 186.54 MiB | 2.166 ms | 2.232 ms |
 
-Median selected-order-line throughput over the entire pipeline was 6.38 and
-38.14 lines/sec for incremental runs, versus 50.23 and 484.07 lines/sec for full
+Median selected-order-line throughput over the entire pipeline was 7.72 and
+43.94 lines/sec for incremental runs, versus 61.42 and 476.54 lines/sec for full
 runs. The incremental numerator is one sale partition; the full numerator is all
 seven sale partitions. These values do not measure total tuples scanned or raw
 SQL operator throughput.
@@ -68,7 +76,7 @@ publication is analyzed before ten latency observations and an
 index scan feeding a bitmap heap scan in all repetitions. Scans returned 134 of
 938 lines in the small workload and 1,334 of 9,338 lines in the larger workload.
 Small-workload heap scans recorded 16 shared-hit blocks incrementally versus 9
-after full rebuilds. Larger incremental heap scans recorded 76–146 shared-hit
+after full rebuilds. Larger incremental heap scans recorded 146 shared-hit
 blocks versus 74 after full rebuilds. All recorded heap scans had zero shared-read
 blocks, so these observations characterize warm-cache access.
 

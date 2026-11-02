@@ -5,6 +5,7 @@ import csv
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import tempfile
@@ -22,10 +23,27 @@ def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _reject_json_constant(value: str):
+    raise ValueError(f"Nonstandard JSON constant is forbidden: {value}")
+
+
+def _finite_json_float(value: str):
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError(f"JSON number exceeds finite client float range: {value}")
+    return parsed
+
+
+def _strict_json(data):
+    # Python's default decoder accepts NaN/Infinity although JSON forbids them;
+    # PostgreSQL JSONB rejects them, including inside an attempted quarantine.
+    return json.loads(data, parse_constant=_reject_json_constant, parse_float=_finite_json_float)
+
+
 def read_manifest(path: Path):
     path = path.resolve()
     data = path.read_bytes()
-    manifest = json.loads(data)
+    manifest = _strict_json(data)
     if not isinstance(manifest, dict) or manifest.get("synthetic") is not True or not isinstance(manifest.get("files"), list):
         raise ValueError("Manifest must label synthetic=true and contain a files list")
     verified = []
@@ -79,9 +97,9 @@ def iter_rows(source, body):
             if not line.strip():
                 continue
             try:
-                yield json.loads(line)
-            except json.JSONDecodeError:
-                yield {"_invalid_json": line}
+                yield _strict_json(line)
+            except ValueError as exc:
+                yield {"_invalid_json": line, "_invalid_json_reason": str(exc)}
 
 
 def land_raw(raw_root: Path, entry: dict, body: bytes) -> str:
@@ -141,6 +159,8 @@ def ingest(conn, run_id, verified, raw_root: Path, as_of: date):
             for number, record in enumerate(iter_rows(source, body), 1):
                 counts["received"] += 1
                 try:
+                    if isinstance(record, dict) and set(record) == {"_invalid_json", "_invalid_json_reason"}:
+                        raise ContractError("Invalid JSON input: " + record["_invalid_json_reason"])
                     normalized, key = validate_record(source, record, schema_version=entry["schema_version"])
                     field = {"order_lines": "sale_date", "refunds": "refund_date", "inventory": "snapshot_date"}.get(source)
                     record_date = date.fromisoformat(normalized[field] if field else normalized["effective_at"][:10])

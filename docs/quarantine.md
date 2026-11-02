@@ -62,3 +62,11 @@ remaining source, horizon, transformation, reconciliation, and dbt checks.
 Schema migration preserves old quarantine records, derives recoverable legacy
 identities from their original payloads, and leaves unkeyed legacy records for
 explicit operator disposition.
+
+JSONL parsing rejects nonstandard `NaN`/`Infinity` constants and numbers such as
+`1e309` that exceed the client's finite floating-point range. The latter is a
+client range limit, although the numeric token is valid JSON syntax. These rows
+retain the original line plus an actionable parse/range reason in quarantine;
+non-finite values never reach PostgreSQL JSONB adaptation. Manifest preflight
+rejects the same inputs explicitly. Finite floating-point additive metadata
+remains compatible; required integer fields still enforce their source contracts.

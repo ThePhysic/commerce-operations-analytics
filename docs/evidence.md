@@ -40,6 +40,13 @@ produced its manifest/catalog: 16 models and 83 data tests were discovered.
 Generated runtime artifacts remain ignored; the versioned model documentation
 and the reproduction commands are committed.
 
+After the first adversarial review, three additional accepted-horizon scenarios
+and seven record-specific quarantine/database scenarios passed. They reproduce
+and prevent future-data leakage after failed ingestion and same-partition
+quarantine bypass. The matching identity unit check also passed. The affected
+schema-drift and quarantine tests were rerun successfully. Review findings and
+their disposition are recorded in [the review record](reviews/astra-review.md).
+
 Run the source unit tests and the PostgreSQL/dbt integration suite against a disposable database:
 
 ```sh

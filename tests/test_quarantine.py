@@ -219,3 +219,36 @@ def test_operator_resolution_obeys_pipeline_writer_lock(database):
         assert unresolved_quarantine(conn)[0]["id"] == rejected["id"]
     finally:
         conn.execute("select pg_advisory_unlock(70402026)")
+
+
+@pytest.mark.integration
+def test_nonstandard_nested_json_number_is_durably_quarantined(database):
+    conn, root = database
+    directory = root / "nonstandard-json"
+    directory.mkdir()
+    body = b'{"refund_id":"R003","line_id":"O002_1","refund_date":"2024-01-05","amount_cents":1000,"version":2,"extra":{"nested":[NaN]}}\n'
+    (directory / "refunds.jsonl").write_bytes(body)
+    manifest = directory / "manifest.json"
+    manifest.write_text(json.dumps({"synthetic": True, "seed": 42, "files": [{"source": "refunds", "path": "refunds.jsonl", "partition": "2024-01-05", "sha256": digest(body), "schema_version": 1, "row_count": 1}]}), encoding="utf-8")
+    _, counts = ingest_bundle(conn, manifest, root)
+    assert counts["rejected"] == 1
+    rejected = unresolved_quarantine(conn)
+    assert len(rejected) == 1
+    assert rejected[0]["business_key"] is None
+    stored = conn.execute("select payload from meta.quarantine where id=%s", (rejected[0]["id"],)).fetchone()["payload"]
+    assert stored["_invalid_json"] == body.decode().strip()
+    assert "Nonstandard JSON constant" in stored["_invalid_json_reason"]
+    assert "Invalid JSON input" in rejected[0]["reason"]
+    assert (root / "raw" / rejected[0]["raw_path"]).read_bytes() == body
+    with pytest.raises(ValueError, match="Unresolved quarantined source records"):
+        _check_sources(conn, AS_OF)
+
+
+@pytest.mark.integration
+def test_valid_additive_fields_cannot_be_confused_with_internal_json_sentinel(database):
+    conn, root = database
+    row = line_record(_invalid_json="legitimate producer metadata", _invalid_json_reason="also metadata")
+    _, counts = deliver_line(conn, root, "valid-additive-markers", row)
+    assert counts["accepted"] == 1
+    assert counts["rejected"] == 0
+    assert not unresolved_quarantine(conn)

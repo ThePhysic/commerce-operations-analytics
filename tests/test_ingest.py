@@ -86,7 +86,49 @@ def test_csv_duplicate_or_missing_headers_and_unheaded_values_fail(body):
 
 def test_malformed_json_is_preserved_for_row_quarantine():
     rows = list(iter_rows("refunds", b'{"refund_id":"R1"}\nnot-json\n\n'))
-    assert rows == [{"refund_id": "R1"}, {"_invalid_json": "not-json"}]
+    assert rows[0] == {"refund_id": "R1"}
+    assert rows[1]["_invalid_json"] == "not-json"
+    assert "Expecting value" in rows[1]["_invalid_json_reason"]
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+@pytest.mark.parametrize("template", ['{"amount_cents":VALUE}', '{"extra":{"nested":[VALUE]}}'])
+def test_nonstandard_json_numbers_use_raw_string_quarantine_sentinel(constant, template):
+    text = template.replace("VALUE", constant)
+    row = list(iter_rows("refunds", text.encode()))[0]
+    assert row["_invalid_json"] == text
+    assert "Nonstandard JSON constant" in row["_invalid_json_reason"]
+
+
+def test_quoted_json_constant_text_remains_a_valid_additive_string():
+    assert list(iter_rows("refunds", b'{"note":"NaN / Infinity"}')) == [{"note": "NaN / Infinity"}]
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_manifest_preflight_rejects_nonstandard_json_constants(tmp_path, constant):
+    path, spec = manifest_fixture(tmp_path)
+    spec["extra"] = {"nested": "NONSTANDARD_PLACEHOLDER"}
+    text = json.dumps(spec).replace('"NONSTANDARD_PLACEHOLDER"', constant)
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError, match="Nonstandard JSON constant"):
+        read_manifest(path)
+
+
+@pytest.mark.parametrize("number", ["1e309", "-1e309"])
+def test_json_exponent_overflow_is_rejected_with_finite_range_reason(tmp_path, number):
+    body = '{"extra":{"nested":NUMBER}}'.replace("NUMBER", number)
+    row = list(iter_rows("refunds", body.encode()))[0]
+    assert row["_invalid_json"] == body
+    assert "finite client float range" in row["_invalid_json_reason"]
+    path, spec = manifest_fixture(tmp_path)
+    spec["extra"] = "OVERFLOW_PLACEHOLDER"
+    path.write_text(json.dumps(spec).replace('"OVERFLOW_PLACEHOLDER"', number), encoding="utf-8")
+    with pytest.raises(ValueError, match="finite client float range"):
+        read_manifest(path)
+
+
+def test_finite_json_float_additive_metadata_remains_compatible():
+    assert list(iter_rows("refunds", b'{"extra":{"ratio":1.25,"scale":1e3}}')) == [{"extra": {"ratio": 1.25, "scale": 1000.0}}]
 
 
 def test_empty_csv_still_must_declare_required_schema_headers():

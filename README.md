@@ -119,7 +119,7 @@ python -m pip install --no-deps -e .
 python -m pytest -q
 ```
 
-Activate the virtual environment before the `pip` and `pytest` commands. Set `COMMERCE_TEST_DATABASE_URL` to a disposable test database to run the integration suite; those tests may recreate its project schemas. `COMMERCE_DATABASE_URL` configures CLI connections; the standard `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, and `PGDATABASE` variables are also supported. `COMMERCE_ROOT` identifies this repository's models/contracts/queries when running an installed package outside the root. `COMMERCE_DATA_DIR` chooses the generated-data directory.
+Activate the virtual environment before the `pip` and `pytest` commands. Set `COMMERCE_TEST_DATABASE_URL` to a disposable test database to run the integration suite; those tests may recreate its project schemas. Quarantine regressions use a separate `commerce_quarantine_test` database and require `CREATE DATABASE`, or a precreated disposable database supplied through `COMMERCE_QUARANTINE_TEST_DATABASE_URL`. `COMMERCE_DATABASE_URL` configures CLI connections; the standard `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, and `PGDATABASE` variables are also supported. `COMMERCE_ROOT` identifies this repository's models/contracts/queries when running an installed package outside the root. `COMMERCE_DATA_DIR` chooses the generated-data directory.
 
 CI runs the deterministic source and PostgreSQL/dbt integration tests, checks Compose configuration, builds the batch image, and independently builds/parses the Airflow DAG. Test and benchmark evidence are described in [the evidence guide](docs/evidence.md). A successful code build is not a substitute for the runtime correctness checks.
 

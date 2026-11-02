@@ -31,7 +31,14 @@ incremental/full retries, freshness-gated recovery, harmless failed future-date
 requests, unrelated same-partition records, version ordering, unsupported schema
 redelivery, unkeyed inputs, legacy identity migration, and operator writer locks.
 
-## Subsequent review
+## Round 2: implementation findings resolved
 
-The revised implementation is awaiting the independent reviewer's updated
-verdict. No clean verdict is claimed by this intermediate record.
+Reviewed fix commit: `0574479e20525dffa141ad21383965f85700277c`.
+The same independent reviewer repeated its probes against the original review
+database, including migration of its legacy unresolved quarantine. It verified
+earlier-date rejection for incremental/full rebuilds, safe default retries,
+unrelated/older-version quarantine rejection, and audited matching resolution.
+Its verdict was: **No remaining complaints about the implementation.**
+
+The final benchmark is being recollected against these fixes. A final artifact
+verdict will follow review of the refreshed evidence and documentation.
