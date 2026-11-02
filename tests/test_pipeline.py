@@ -280,8 +280,8 @@ def test_date_moving_correction_replaces_empty_old_partition(database, tmp_path)
     assert snapshot(conn) == incremental
 
 
-def test_quality_gate_aggregates_all_partition_shards_and_requires_clean_redelivery(database, tmp_path):
-    """Exercise the source gate directly: no dbt builds are needed for this failure."""
+def test_quality_gate_requires_matching_record_redelivery_across_partition_shards(database, tmp_path):
+    """A clean sibling or later unrelated file cannot clear a rejected record."""
     bad_row = dict(records()["order_lines"][4], version=2, quantity="invalid")
     bad = write_dataset(tmp_path / "shards", {"order_lines": [bad_row]}, validate=False)
     good = write_dataset(tmp_path / "sibling", {"order_lines": [records()["order_lines"][5]]})
@@ -303,6 +303,11 @@ def test_quality_gate_aggregates_all_partition_shards_and_requires_clean_redeliv
         deliver(ROOT / "fixtures" / "reference" / "manifest.json")
         _check_sources(conn, AS_OF)
         assert deliver(bad)["rejected"] == 1
+        with pytest.raises(ValueError, match="Unresolved quarantined"):
+            _check_sources(conn, AS_OF)
+        # The previous partition-wide gate incorrectly treated this later clean
+        # file as resolving the distinct bad key from the same daily partition.
+        assert deliver(good)["rejected"] == 0
         with pytest.raises(ValueError, match="Unresolved quarantined"):
             _check_sources(conn, AS_OF)
         unrelated = write_dataset(tmp_path / "gate_unrelated", {"inventory": [records()["inventory"][3]]})

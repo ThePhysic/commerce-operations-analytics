@@ -4,16 +4,42 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import uuid
 from datetime import date
 from pathlib import Path
 
-from .db import ROOT, connect, initialize
+from .db import ROOT, connect, initialize, locked_connection
 from .generate import generate
 from .pipeline import data_root, run
 
 
 def emit(value):
     print(json.dumps(value, indent=2, default=str))
+
+
+def quarantine(action, *, id=None, reason=None, all=False):
+    """Inspect retained failures or record an explicit operator disposition."""
+    if action == "resolve" and (not isinstance(reason, str) or not reason.strip()):
+        raise ValueError("A nonempty operator resolution reason is required")
+    with locked_connection() as conn:
+        if action == "list":
+            return conn.execute("""select id,source,business_key,source_version,raw_path,reason,run_id,
+              created_at,resolved_at,resolved_by_run_id,resolution_reason from meta.quarantine
+              where (%s or resolved_at is null) order by id""", (all,)).fetchall()
+        if action != "resolve":
+            raise ValueError("Unknown quarantine action")
+        run_id = uuid.uuid4().hex
+        with conn.transaction():
+            row = conn.execute("select * from meta.quarantine where id=%s for update", (id,)).fetchone()
+            if row is None:
+                raise ValueError(f"Unknown quarantine ID: {id}")
+            if row["resolved_at"] is not None:
+                raise ValueError(f"Quarantine {id} is already resolved; its original audit is preserved")
+            conn.execute("""insert into meta.runs(run_id,status,ended_at)
+              values(%s,'operator-resolved',now())""", (run_id,))
+            return conn.execute("""update meta.quarantine set resolved_at=now(),resolved_by_run_id=%s,
+              resolution_reason=%s where id=%s returning id,source,business_key,source_version,raw_path,
+              resolved_at,resolved_by_run_id,resolution_reason""", (run_id, "Operator disposition: " + reason.strip(), id)).fetchone()
 
 
 def status():
@@ -32,7 +58,8 @@ def status():
             "last_good": last_good,
             "sources": sources,
             "row_count_deltas": {k: current_counts.get(k,0)-prior_counts.get(k,0) for k in current_counts.keys() | prior_counts.keys()},
-            "run_failure_rate": conn.execute("select coalesce(count(*) filter(where status in ('failed','abandoned'))::numeric/nullif(count(*),0),0) rate from meta.runs").fetchone()["rate"],
+            "run_failure_rate": conn.execute("select coalesce(count(*) filter(where status in ('failed','abandoned'))::numeric/nullif(count(*),0),0) rate from meta.runs where status<>'operator-resolved'").fetchone()["rate"],
+            "unresolved_quarantine_count": conn.execute("select count(*) n from meta.quarantine where resolved_at is null").fetchone()["n"],
             "recent_runs": conn.execute("select * from meta.runs order by started_at desc limit 10").fetchall(),
             "pending_source_changes": conn.execute("select count(*) n from meta.source_changes c where not exists(select 1 from meta.publication_sources p where p.source_change_id=c.id)").fetchone()["n"],
         }
@@ -96,6 +123,13 @@ def main(argv=None):
     load.add_argument("--lookback-days", type=int, default=7)
     load.add_argument("--fail-at", choices=["after-ingest", "before-publish", "during-publish"])
     sub.add_parser("status")
+    quarantined = sub.add_parser("quarantine", help="Inspect or explicitly resolve retained quarantine records")
+    quarantine_actions = quarantined.add_subparsers(dest="action", required=True)
+    listed = quarantine_actions.add_parser("list")
+    listed.add_argument("--all", action="store_true", help="Include resolved records")
+    resolved = quarantine_actions.add_parser("resolve")
+    resolved.add_argument("--id", type=int, required=True)
+    resolved.add_argument("--reason", required=True)
     q = sub.add_parser("query")
     q.add_argument("--name", required=True, choices=["sales", "refunds", "fulfillment", "inventory", "refund_events", "changes"])
     d = sub.add_parser("demo")
@@ -116,6 +150,8 @@ def main(argv=None):
             emit(status())
         elif command == "query":
             emit(query(**args))
+        elif command == "quarantine":
+            emit(quarantine(**args))
         elif command == "demo":
             emit(demo(**args))
         elif command == "benchmark":

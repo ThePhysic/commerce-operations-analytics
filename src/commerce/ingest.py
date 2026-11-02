@@ -13,7 +13,7 @@ from pathlib import Path, PureWindowsPath
 
 from psycopg.types.json import Jsonb
 
-from .contracts import ContractError, load_contract, validate_record
+from .contracts import ContractError, load_contract, quarantine_identity, validate_record
 
 SOURCES = {"order_lines", "refunds", "inventory", "products", "locations"}
 
@@ -118,6 +118,12 @@ def land_raw(raw_root: Path, entry: dict, body: bytes) -> str:
     return str(raw.relative_to(raw_root))
 
 
+def unresolved_quarantine(conn):
+    """Return outstanding record-specific quality failures, including unkeyed rows."""
+    return conn.execute("""select id,source,business_key,source_version,raw_path,reason,run_id,created_at
+      from meta.quarantine where resolved_at is null order by id""").fetchall()
+
+
 def ingest(conn, run_id, verified, raw_root: Path, as_of: date):
     totals = dict(received=0, accepted=0, rejected=0, changed=0)
     # Each input is landed before the source transaction; orphan raw objects are safe.
@@ -161,10 +167,16 @@ def ingest(conn, run_id, verified, raw_root: Path, as_of: date):
                           values(%s,%s,%s,%s,%s,%s)""", (run_id, source, key, Jsonb(old["payload"]) if old else None, Jsonb(normalized), raw_path))
                         totals["changed"] += 1
                     counts["accepted"] += 1
+                    conn.execute("""update meta.quarantine set resolved_at=now(),resolved_by_run_id=%s,
+                      resolution_reason='Validated redelivery of matching source/business_key at sufficient version'
+                      where resolved_at is null and source=%s and business_key=%s
+                      and (source_version is null or source_version<=%s)""",
+                      (run_id, source, key, normalized["version"]))
                 except (ContractError, TypeError, KeyError, ValueError) as exc:
                     counts["rejected"] += 1
-                    conn.execute("""insert into meta.quarantine(run_id,source,raw_path,row_number,payload,reason)
-                      values(%s,%s,%s,%s,%s,%s)""", (run_id, source, raw_path, number, Jsonb(record), str(exc)))
+                    rejected_key, rejected_version = quarantine_identity(source, record)
+                    conn.execute("""insert into meta.quarantine(run_id,source,raw_path,row_number,payload,reason,business_key,source_version)
+                      values(%s,%s,%s,%s,%s,%s,%s,%s)""", (run_id, source, raw_path, number, Jsonb(record), str(exc), rejected_key, rejected_version))
             if counts["received"] != entry["row_count"]:
                 raise ValueError(f"Row count mismatch for {entry['path']}: expected {entry['row_count']}, received {counts['received']}")
             conn.execute("""insert into meta.files(run_id,source,source_path,raw_path,sha256,schema_version,

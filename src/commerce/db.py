@@ -8,6 +8,8 @@ from pathlib import Path
 import psycopg
 from psycopg.rows import dict_row
 
+from .contracts import ContractError, quarantine_identity
+
 ROOT = Path(os.getenv("COMMERCE_ROOT", Path.cwd() if (Path.cwd() / "warehouse").is_dir() else Path(__file__).resolve().parents[2]))
 
 
@@ -56,6 +58,13 @@ def initialize(conn):
       id bigint generated always as identity primary key, run_id text not null references meta.runs,
       source text not null, raw_path text not null, row_number bigint not null,
       payload jsonb not null, reason text not null, created_at timestamptz default now());
+    alter table meta.quarantine add column if not exists business_key text;
+    alter table meta.quarantine add column if not exists source_version integer;
+    alter table meta.quarantine add column if not exists resolved_at timestamptz;
+    alter table meta.quarantine add column if not exists resolved_by_run_id text references meta.runs(run_id);
+    alter table meta.quarantine add column if not exists resolution_reason text;
+    create index if not exists quarantine_unresolved_identity on meta.quarantine(source,business_key,source_version)
+      where resolved_at is null;
     create table if not exists meta.source_changes (
       id bigint generated always as identity primary key, run_id text not null references meta.runs,
       source text not null, business_key text not null, before_payload jsonb, after_payload jsonb not null,
@@ -75,3 +84,12 @@ def initialize(conn):
       sum(f.received) received,sum(f.rejected) rejected
       from meta.files f join meta.runs r using(run_id) group by source;
     """)
+    # Preserve and identify legacy quarantines when upgrading an existing local
+    # database. Unrecoverable identities remain unresolved for operator review.
+    for row in conn.execute("select id,source,payload from meta.quarantine where resolved_at is null and (business_key is null or source_version is null)").fetchall():
+        try:
+            key, version = quarantine_identity(row["source"], row["payload"])
+        except ContractError:
+            continue
+        if key is not None or version is not None:
+            conn.execute("update meta.quarantine set business_key=coalesce(business_key,%s),source_version=coalesce(source_version,%s) where id=%s", (key, version, row["id"]))

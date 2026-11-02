@@ -14,7 +14,7 @@ from psycopg import sql
 from psycopg.types.json import Jsonb
 
 from .db import ROOT, locked_connection
-from .ingest import ingest, read_manifest
+from .ingest import ingest, read_manifest, unresolved_quarantine
 
 
 def data_root():
@@ -23,6 +23,25 @@ def data_root():
 
 def _date_range(start, end):
     return {start + timedelta(days=n) for n in range((end - start).days + 1)}
+
+
+def accepted_horizon(conn):
+    """Earliest safe report date for the current durable canonical state.
+
+    A failed run can accept records without publishing them. Their event dates
+    still bound a later retry, including refunds on old sales and fulfillment
+    timestamps on old order lines. Only normalized, source-defined fields count.
+    """
+    return conn.execute("""select max(value::date) horizon from landing.records r
+      cross join lateral (values
+        (case r.source when 'order_lines' then r.payload->>'sale_date'
+          when 'refunds' then r.payload->>'refund_date'
+          when 'inventory' then r.payload->>'snapshot_date'
+          when 'products' then left(r.payload->>'effective_at',10)
+          when 'locations' then left(r.payload->>'effective_at',10) end),
+        (case when r.source='order_lines' then left(r.payload->>'paid_at',10) end),
+        (case when r.source='order_lines' then left(r.payload->>'fulfilled_at',10) end)
+      ) dates(value) where value is not null""").fetchone()["horizon"]
 
 
 def _change_dates(conn, change):
@@ -44,17 +63,9 @@ def _change_dates(conn, change):
 
 def _check_sources(conn, as_of):
     config = json.loads((ROOT / "contracts" / "quality.json").read_text())
-    unresolved = conn.execute("""with deliveries as (
-      select f.source,f.partition_date,r.run_id,r.started_at,sum(f.rejected) rejected,
-             bool_or(f.schema_version<>1) unsupported_schema
-      from meta.files f join meta.runs r using(run_id)
-      group by f.source,f.partition_date,r.run_id,r.started_at), latest as (
-      select distinct on(source,partition_date) * from deliveries
-      order by source,partition_date,started_at desc,run_id desc)
-      select source,partition_date from latest where rejected>%s or unsupported_schema""",
-      (config["max_rejected_rows"],)).fetchall()
+    unresolved = unresolved_quarantine(conn)
     if unresolved:
-        raise ValueError(f"Unresolved quarantined source partitions; re-deliver clean files: {unresolved}")
+        raise ValueError(f"Unresolved quarantined source records; re-deliver matching corrections or explicitly resolve: {unresolved}")
     rows = {r["source"]: r for r in conn.execute("select * from meta.source_status")}
     for source, rule in config["sources"].items():
         if source not in rows:
@@ -126,6 +137,11 @@ def run(manifest: Path, *, full_refresh=False, start=None, end=None, as_of=None,
     started = time.perf_counter()
     with locked_connection() as conn:
         previous = conn.execute("select * from meta.publications order by publication_id desc limit 1").fetchone()
+        horizon = accepted_horizon(conn)
+        if explicit_as_of and horizon and as_of < horizon:
+            raise ValueError(f"as_of {as_of} precedes accepted source horizon {horizon}; complete that reporting horizon or query a retained publication")
+        if horizon and not explicit_as_of:
+            as_of = max(as_of, horizon)
         if previous and not explicit_as_of:
             as_of = max(as_of, previous["as_of"])
         if end and end > as_of:

@@ -114,3 +114,27 @@ def validate_record(
     key_values = [payload[key] for key in contract["business_key"]]
     business_key = str(key_values[0]) if len(key_values) == 1 else json.dumps(key_values, separators=(",", ":"))
     return payload, business_key
+
+
+def quarantine_identity(source: str, record: Any) -> tuple[str | None, int | None]:
+    """Recover only a rejected row's normalized key/version when possible.
+
+    Invalid non-key fields and unsupported source schema identifiers do not hide
+    a readable known business key. Missing/invalid keys remain unkeyed and need
+    an explicit audited operator decision; file position is never an identity.
+    """
+    if not isinstance(record, dict):
+        return None, None
+    contract = load_contract(source)
+    business_key = None
+    source_version = None
+    try:
+        values = [_normalize(field, record[field], contract["fields"][field]) for field in contract["business_key"]]
+        business_key = str(values[0]) if len(values) == 1 else json.dumps(values, separators=(",", ":"))
+    except (KeyError, ContractError):
+        pass
+    try:
+        source_version = _normalize("version", record["version"], contract["fields"]["version"])
+    except (KeyError, ContractError):
+        pass
+    return business_key, source_version
