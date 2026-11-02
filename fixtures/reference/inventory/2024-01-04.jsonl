@@ -1,0 +1,3 @@
+{"actual_quantity":5,"expected_quantity":6,"location_id":"L001","product_id":"P001","snapshot_date":"2024-01-04","snapshot_id":"I2024-01-04_L001_P001","version":1}
+{"actual_quantity":7,"expected_quantity":7,"location_id":"L001","product_id":"P002","snapshot_date":"2024-01-04","snapshot_id":"I2024-01-04_L001_P002","version":1}
+{"actual_quantity":0,"expected_quantity":10,"location_id":"L002","product_id":"P002","snapshot_date":"2024-01-04","snapshot_id":"I2024-01-04_L002_P002","version":1}

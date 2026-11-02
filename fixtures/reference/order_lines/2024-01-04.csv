@@ -1,0 +1,3 @@
+line_id,order_id,location_id,product_id,sale_date,quantity,unit_price_cents,discount_cents,status,paid_at,fulfilled_at,version
+O004_1,O004,L001,P001,2024-01-04,1,1000,0,fulfilled,2024-01-04T11:00:00+00:00,2024-01-04T11:30:00+00:00,1
+O005_1,O005,L002,P002,2024-01-04,1,2500,0,paid,2024-01-04T12:00:00+00:00,,1

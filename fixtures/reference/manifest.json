@@ -1,0 +1,158 @@
+{
+  "files": [
+    {
+      "partition": "2024-01-01",
+      "path": "inventory/2024-01-01.jsonl",
+      "row_count": 3,
+      "schema_version": 1,
+      "sha256": "43b231ab70126e8cd36341dca53a52914ac7b3c424ac050698da9cd8def92450",
+      "source": "inventory"
+    },
+    {
+      "partition": "2024-01-02",
+      "path": "inventory/2024-01-02.jsonl",
+      "row_count": 0,
+      "schema_version": 1,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source": "inventory"
+    },
+    {
+      "partition": "2024-01-03",
+      "path": "inventory/2024-01-03.jsonl",
+      "row_count": 0,
+      "schema_version": 1,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source": "inventory"
+    },
+    {
+      "partition": "2024-01-04",
+      "path": "inventory/2024-01-04.jsonl",
+      "row_count": 3,
+      "schema_version": 1,
+      "sha256": "1abf3458c9b370797240d687b4da4cd0bdeb7084f62d61767a13dac5024facd7",
+      "source": "inventory"
+    },
+    {
+      "partition": "2024-01-05",
+      "path": "inventory/2024-01-05.jsonl",
+      "row_count": 0,
+      "schema_version": 1,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source": "inventory"
+    },
+    {
+      "partition": "2023-01-01",
+      "path": "locations/2023-01-01.jsonl",
+      "row_count": 2,
+      "schema_version": 1,
+      "sha256": "fb5a09a232480f8f631d54d4e45b213d4f6c0cbef808c040ba6a7fcb7637c216",
+      "source": "locations"
+    },
+    {
+      "partition": "2024-01-04",
+      "path": "locations/2024-01-04.jsonl",
+      "row_count": 1,
+      "schema_version": 1,
+      "sha256": "0eb9b4d5d43db7a24c2edf93eacdb1ff58c111f7146a450281e228961e1e254c",
+      "source": "locations"
+    },
+    {
+      "partition": "2024-01-01",
+      "path": "order_lines/2024-01-01.csv",
+      "row_count": 4,
+      "schema_version": 1,
+      "sha256": "8c9535ab9a35c50e5fb6a54b09a815648c2fcff59ce53db4d665348bae1e87b9",
+      "source": "order_lines"
+    },
+    {
+      "partition": "2024-01-02",
+      "path": "order_lines/2024-01-02.csv",
+      "row_count": 0,
+      "schema_version": 1,
+      "sha256": "80e40b5cb1af3266d059f646fa8eedf923fa5651b98219af397d9e40326a0f6d",
+      "source": "order_lines"
+    },
+    {
+      "partition": "2024-01-03",
+      "path": "order_lines/2024-01-03.csv",
+      "row_count": 0,
+      "schema_version": 1,
+      "sha256": "80e40b5cb1af3266d059f646fa8eedf923fa5651b98219af397d9e40326a0f6d",
+      "source": "order_lines"
+    },
+    {
+      "partition": "2024-01-04",
+      "path": "order_lines/2024-01-04.csv",
+      "row_count": 2,
+      "schema_version": 1,
+      "sha256": "f94bb1e5c9e07638af7a2b5340012e325f441fd24191b271f930ad21a80874ec",
+      "source": "order_lines"
+    },
+    {
+      "partition": "2024-01-05",
+      "path": "order_lines/2024-01-05.csv",
+      "row_count": 0,
+      "schema_version": 1,
+      "sha256": "80e40b5cb1af3266d059f646fa8eedf923fa5651b98219af397d9e40326a0f6d",
+      "source": "order_lines"
+    },
+    {
+      "partition": "2023-01-01",
+      "path": "products/2023-01-01.jsonl",
+      "row_count": 2,
+      "schema_version": 1,
+      "sha256": "7f0ed6a76cf8e3a61f6c36f6b465709ec8bd6a4a6c4fffed1153367b1de13c94",
+      "source": "products"
+    },
+    {
+      "partition": "2024-01-04",
+      "path": "products/2024-01-04.jsonl",
+      "row_count": 1,
+      "schema_version": 1,
+      "sha256": "9c5f1fe7e63491fab3129448b87c11c88fc6eac30b86357814db20ccd09fec2d",
+      "source": "products"
+    },
+    {
+      "partition": "2024-01-01",
+      "path": "refunds/2024-01-01.jsonl",
+      "row_count": 0,
+      "schema_version": 1,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source": "refunds"
+    },
+    {
+      "partition": "2024-01-02",
+      "path": "refunds/2024-01-02.jsonl",
+      "row_count": 0,
+      "schema_version": 1,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source": "refunds"
+    },
+    {
+      "partition": "2024-01-03",
+      "path": "refunds/2024-01-03.jsonl",
+      "row_count": 1,
+      "schema_version": 1,
+      "sha256": "3814ba501e31a7e5412d1106bb123d54258e3652091b7caf3f8036441ac5ac1b",
+      "source": "refunds"
+    },
+    {
+      "partition": "2024-01-04",
+      "path": "refunds/2024-01-04.jsonl",
+      "row_count": 0,
+      "schema_version": 1,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source": "refunds"
+    },
+    {
+      "partition": "2024-01-05",
+      "path": "refunds/2024-01-05.jsonl",
+      "row_count": 2,
+      "schema_version": 1,
+      "sha256": "e916e814e0c6958605f37d9d7b6c30c0617877dc3b40f9e6e91c47e035cc1bc4",
+      "source": "refunds"
+    }
+  ],
+  "seed": 42,
+  "synthetic": true
+}

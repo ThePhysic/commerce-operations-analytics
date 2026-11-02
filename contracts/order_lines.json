@@ -1,0 +1,22 @@
+{
+  "source": "order_lines", "schema_version": 1, "format": "csv",
+  "owner": "synthetic-pos", "expected_cadence": "daily", "freshness_max_days": 1,
+  "business_key": ["line_id"], "partition_field": "sale_date",
+  "timestamp_convention": "Explicit UTC ISO-8601; sale_date is UTC payment date for noncancelled lines",
+  "null_policy": "All fields required; only paid_at and fulfilled_at may be null; CSV empty means null",
+  "schema_evolution": "Unknown additive fields retained; incompatible types/missing fields quarantined; unsupported schema versions rejected",
+  "fields": {
+    "line_id": {"type": "string", "description": "Stable unique synthetic order line ID"},
+    "order_id": {"type": "string", "description": "Synthetic order ID; lifecycle/location consistent across its lines"},
+    "location_id": {"type": "string", "description": "Selling location business key"},
+    "product_id": {"type": "string", "description": "Product business key"},
+    "sale_date": {"type": "date", "description": "UTC date to which revenue and attributable refunds belong"},
+    "quantity": {"type": "integer", "minimum": 1, "description": "Positive units on line"},
+    "unit_price_cents": {"type": "integer", "minimum": 0, "description": "Merchandise unit price excluding tax/tips"},
+    "discount_cents": {"type": "integer", "minimum": 0, "description": "Total discount for line, at most quantity times unit price"},
+    "status": {"type": "string", "accepted_values": ["paid", "fulfilled", "cancelled"], "description": "Current source lifecycle status; cancelled lines contribute no revenue"},
+    "paid_at": {"type": "timestamp", "nullable": true, "description": "Payment timestamp; mandatory for paid/fulfilled"},
+    "fulfilled_at": {"type": "timestamp", "nullable": true, "description": "Fulfillment timestamp; mandatory only for fulfilled and not before paid_at"},
+    "version": {"type": "integer", "minimum": 1, "description": "Monotonically increasing correction version per line_id"}
+  }
+}

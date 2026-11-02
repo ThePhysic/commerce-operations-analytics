@@ -1,0 +1,121 @@
+{
+  "as_of": "2024-01-05",
+  "fact_counts": {
+    "fct_fulfillment": 5,
+    "fct_inventory_snapshot": 6,
+    "fct_order_line": 6,
+    "fct_refund": 3
+  },
+  "fulfillment": [
+    {
+      "fulfilled_orders": 2,
+      "location_id": "L001",
+      "median_minutes": 90,
+      "p95_minutes": 117,
+      "sale_date": "2024-01-01"
+    },
+    {
+      "fulfilled_orders": 1,
+      "location_id": "L001",
+      "median_minutes": 30,
+      "p95_minutes": 30,
+      "sale_date": "2024-01-04"
+    }
+  ],
+  "history": {
+    "L001_region_2024_01_01": "North",
+    "L001_region_2024_01_04": "Central",
+    "P001_category_2024_01_01": "Home",
+    "P001_category_2024_01_04": "Gifts"
+  },
+  "inventory": [
+    {
+      "location_id": "L001",
+      "snapshot_date": "2024-01-01",
+      "snapshots": 2,
+      "stockouts": 1,
+      "variance_quantity": -8
+    },
+    {
+      "location_id": "L002",
+      "snapshot_date": "2024-01-01",
+      "snapshots": 1,
+      "stockouts": 0,
+      "variance_quantity": 0
+    },
+    {
+      "location_id": "L001",
+      "snapshot_date": "2024-01-04",
+      "snapshots": 2,
+      "stockouts": 0,
+      "variance_quantity": -1
+    },
+    {
+      "location_id": "L002",
+      "snapshot_date": "2024-01-04",
+      "snapshots": 1,
+      "stockouts": 1,
+      "variance_quantity": -10
+    }
+  ],
+  "refund_events": [
+    {
+      "refund_cents": 400,
+      "refund_date": "2024-01-03"
+    },
+    {
+      "refund_cents": 1100,
+      "refund_date": "2024-01-05"
+    }
+  ],
+  "refund_rates": [
+    {
+      "location_id": "L001",
+      "paid_orders": 2,
+      "refund_rate": 1.0,
+      "refunded_orders": 2,
+      "sale_date": "2024-01-01"
+    }
+  ],
+  "sales": [
+    {
+      "discount_cents": 600,
+      "gross_sales_cents": 5500,
+      "location_id": "L001",
+      "net_sales_cents": 3400,
+      "refund_cents": 1500,
+      "sale_date": "2024-01-01"
+    },
+    {
+      "discount_cents": 0,
+      "gross_sales_cents": 0,
+      "location_id": "L002",
+      "net_sales_cents": 0,
+      "refund_cents": 0,
+      "sale_date": "2024-01-01"
+    },
+    {
+      "discount_cents": 0,
+      "gross_sales_cents": 1000,
+      "location_id": "L001",
+      "net_sales_cents": 1000,
+      "refund_cents": 0,
+      "sale_date": "2024-01-04"
+    },
+    {
+      "discount_cents": 0,
+      "gross_sales_cents": 2500,
+      "location_id": "L002",
+      "net_sales_cents": 2500,
+      "refund_cents": 0,
+      "sale_date": "2024-01-04"
+    }
+  ],
+  "synthetic": true,
+  "totals_cents": {
+    "discounts": 600,
+    "gross_sales": 9000,
+    "net_sales": 6900,
+    "refunds": 1500
+  }
+}

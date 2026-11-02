@@ -1,0 +1,17 @@
+{
+  "source": "inventory", "schema_version": 1, "format": "jsonl",
+  "owner": "synthetic-inventory", "expected_cadence": "daily per active location/product", "freshness_max_days": 1,
+  "business_key": ["snapshot_id"], "partition_field": "snapshot_date",
+  "timestamp_convention": "snapshot_date is UTC end-of-day business date",
+  "null_policy": "All fields required and nonnull",
+  "schema_evolution": "Unknown additive fields retained; incompatible types/missing fields quarantined; unsupported schema versions rejected",
+  "fields": {
+    "snapshot_id": {"type": "string", "description": "Stable snapshot ID; location/product/day must also be unique"},
+    "location_id": {"type": "string", "description": "Location business key"},
+    "product_id": {"type": "string", "description": "Product business key"},
+    "snapshot_date": {"type": "date", "description": "UTC date of inventory observation"},
+    "expected_quantity": {"type": "integer", "minimum": 0, "description": "Expected units from inventory ledger"},
+    "actual_quantity": {"type": "integer", "minimum": 0, "description": "Observed units; zero defines stockout"},
+    "version": {"type": "integer", "minimum": 1, "description": "Monotonically increasing correction version per snapshot_id"}
+  }
+}

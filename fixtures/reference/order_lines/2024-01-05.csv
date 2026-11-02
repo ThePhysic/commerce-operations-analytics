@@ -1,0 +1,1 @@
+line_id,order_id,location_id,product_id,sale_date,quantity,unit_price_cents,discount_cents,status,paid_at,fulfilled_at,version

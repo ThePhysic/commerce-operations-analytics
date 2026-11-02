@@ -1,0 +1,15 @@
+{
+  "source": "products", "schema_version": 1, "format": "jsonl",
+  "owner": "synthetic-product-catalog", "expected_cadence": "initial full history plus changes", "freshness_max_days": null,
+  "business_key": ["product_id", "effective_at"], "partition_field": "effective_at",
+  "timestamp_convention": "Explicit UTC ISO-8601; effective_at begins inclusive SCD2 interval",
+  "null_policy": "All fields required and nonnull",
+  "schema_evolution": "Unknown additive fields retained; incompatible types/missing fields quarantined; unsupported schema versions rejected",
+  "fields": {
+    "product_id": {"type": "string", "description": "Stable product business key shared by all history rows"},
+    "name": {"type": "string", "description": "Synthetic product display name"},
+    "category": {"type": "string", "description": "Historically meaningful product category"},
+    "effective_at": {"type": "timestamp", "description": "Inclusive UTC start of category/name history row"},
+    "version": {"type": "integer", "minimum": 1, "description": "Correction version within product_id/effective_at key"}
+  }
+}

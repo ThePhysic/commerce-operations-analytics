@@ -1,0 +1,15 @@
+{
+  "source": "refunds", "schema_version": 1, "format": "jsonl",
+  "owner": "synthetic-returns", "expected_cadence": "daily; empty partitions allowed", "freshness_max_days": 1,
+  "business_key": ["refund_id"], "partition_field": "refund_date",
+  "timestamp_convention": "refund_date is UTC event date; sale attribution resolved from referenced line",
+  "null_policy": "All fields required and nonnull",
+  "schema_evolution": "Unknown additive fields retained; incompatible types/missing fields quarantined; unsupported schema versions rejected",
+  "fields": {
+    "refund_id": {"type": "string", "description": "Stable synthetic refund event ID; distinct partial refunds have distinct IDs"},
+    "line_id": {"type": "string", "description": "Original order line; multiple refunds may refer to one line"},
+    "refund_date": {"type": "date", "description": "UTC refund event date; may follow sale by days"},
+    "amount_cents": {"type": "integer", "minimum": 1, "description": "Merchandise refund; cumulative amount cannot exceed discounted line total"},
+    "version": {"type": "integer", "minimum": 1, "description": "Monotonically increasing correction version per refund_id"}
+  }
+}

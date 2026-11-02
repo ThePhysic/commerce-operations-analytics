@@ -1,0 +1,11 @@
+{
+  "description": "Freshness measured against explicit reporting as_of; all invalid rows block publication.",
+  "max_rejected_rows": 0,
+  "sources": {
+    "order_lines": {"max_age_days": 0, "daily_complete": true},
+    "inventory": {"max_age_days": 0, "daily_complete": true},
+    "refunds": {"max_age_days": 0, "daily_complete": true},
+    "products": {"max_age_days": 3650, "daily_complete": false},
+    "locations": {"max_age_days": 3650, "daily_complete": false}
+  }
+}
