@@ -1,0 +1,23 @@
+FROM apache/airflow:2.11.0-python3.12
+
+USER root
+RUN mkdir -p /opt/commerce /opt/commerce-venv /opt/airflow/state /workspace/data \
+    && chown -R airflow:root /opt/commerce /opt/commerce-venv /opt/airflow/state /workspace/data
+USER airflow
+WORKDIR /opt/commerce
+COPY --chown=airflow:root requirements.lock ./requirements.lock
+# Keep dbt and its dependencies separate from Airflow's constrained environment.
+RUN python -m venv /opt/commerce-venv \
+    && /opt/commerce-venv/bin/python -m pip install --no-cache-dir -r requirements.lock
+COPY --chown=airflow:root pyproject.toml README.md ./
+COPY --chown=airflow:root src ./src
+COPY --chown=airflow:root warehouse ./warehouse
+COPY --chown=airflow:root contracts ./contracts
+COPY --chown=airflow:root queries ./queries
+COPY --chown=airflow:root fixtures ./fixtures
+COPY --chown=airflow:root scripts ./scripts
+RUN /opt/commerce-venv/bin/python -m pip install --no-cache-dir --no-deps .
+COPY --chown=airflow:root dags /opt/airflow/dags
+ENV COMMERCE_ROOT=/opt/commerce \
+    COMMERCE_DATA_DIR=/workspace/data
+WORKDIR /opt/airflow

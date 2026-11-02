@@ -1,0 +1,89 @@
+name: commerce-analytics
+
+x-database-environment: &database-environment
+  PGHOST: postgres
+  PGPORT: "5432"
+  PGUSER: commerce
+  PGPASSWORD: synthetic-local-only
+  PGDATABASE: commerce_analytics
+  COMMERCE_DATABASE_URL: postgresql://commerce:synthetic-local-only@postgres:5432/commerce_analytics
+  COMMERCE_DATA_DIR: /workspace/data
+
+services:
+  postgres:
+    image: postgres:16.10-bookworm
+    environment:
+      POSTGRES_USER: commerce
+      POSTGRES_PASSWORD: synthetic-local-only
+      POSTGRES_DB: commerce_analytics
+    command: [postgres, -c, shared_buffers=96MB, -c, work_mem=8MB, -c, max_connections=25]
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - warehouse-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U commerce -d commerce_analytics"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    mem_limit: 384m
+    cpus: 1.0
+    restart: "no"
+
+  runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      <<: *database-environment
+      COMMERCE_ROOT: /app
+    volumes:
+      - ./data:/workspace/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: [demo]
+    mem_limit: 1536m
+    cpus: 1.5
+    restart: "no"
+
+  airflow:
+    profiles: [airflow]
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    environment:
+      <<: *database-environment
+      COMMERCE_ROOT: /opt/commerce
+      AIRFLOW_HOME: /opt/airflow/state
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__LOGGING__BASE_LOG_FOLDER: /opt/airflow/logs
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__PARALLELISM: "1"
+      AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: "1"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/state/airflow.db
+      AIRFLOW__WEBSERVER__WORKERS: "1"
+      AIRFLOW__SCHEDULER__PARSING_PROCESSES: "1"
+      AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: "60"
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "false"
+      AIRFLOW__WEBSERVER__WARN_DEPLOYMENT_EXPOSURE: "false"
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./data:/workspace/data
+      - airflow-state:/opt/airflow/state
+      - airflow-logs:/opt/airflow/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: [standalone]
+    mem_limit: 2048m
+    cpus: 1.5
+    restart: "no"
+
+volumes:
+  warehouse-data:
+  airflow-state:
+  airflow-logs:

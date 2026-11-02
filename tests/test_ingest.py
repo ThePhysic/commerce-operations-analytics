@@ -81,6 +81,11 @@ def test_malformed_json_is_preserved_for_row_quarantine():
     assert rows == [{"refund_id": "R1"}, {"_invalid_json": "not-json"}]
 
 
+def test_empty_csv_still_must_declare_required_schema_headers():
+    with pytest.raises(ValueError, match="required CSV headers"):
+        list(iter_rows("order_lines", b"line_id,order_id\n"))
+
+
 def test_raw_landing_is_immutable_and_replay_reuses_bytes(tmp_path):
     body = b'{"synthetic":true}\n'
     entry = {"source": "refunds", "partition": "2024-01-01", "sha256": digest(body)}

@@ -154,7 +154,8 @@ def run(manifest: Path, *, full_refresh=False, start=None, end=None, as_of=None,
                 if previous and not full_refresh:
                     tables = conn.execute("select tablename from pg_tables where schemaname=%s", (previous["schema_name"],)).fetchall()
                     for row in tables:
-                        conn.execute(sql.SQL("create table {}.{} as table {}.{}").format(sql.Identifier(schema), sql.Identifier(row["tablename"]), sql.Identifier(previous["schema_name"]), sql.Identifier(row["tablename"])))
+                        conn.execute(sql.SQL("create table {}.{} (like {}.{} including all)").format(sql.Identifier(schema), sql.Identifier(row["tablename"]), sql.Identifier(previous["schema_name"]), sql.Identifier(row["tablename"])))
+                        conn.execute(sql.SQL("insert into {}.{} select * from {}.{}").format(sql.Identifier(schema), sql.Identifier(row["tablename"]), sql.Identifier(previous["schema_name"]), sql.Identifier(row["tablename"])))
                 for d in sorted(selected):
                     conn.execute("insert into meta.reprocess_dates values(%s,%s)", (run_id, d))
                 if selected:

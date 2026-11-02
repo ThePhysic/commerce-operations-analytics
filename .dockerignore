@@ -1,0 +1,14 @@
+.git
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+data
+warehouse/target
+warehouse/logs
+docs/evidence
+*.zip
+.env
+.env.*
+!.env.example
