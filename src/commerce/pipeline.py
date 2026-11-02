@@ -44,6 +44,17 @@ def _change_dates(conn, change):
 
 def _check_sources(conn, as_of):
     config = json.loads((ROOT / "contracts" / "quality.json").read_text())
+    unresolved = conn.execute("""with deliveries as (
+      select f.source,f.partition_date,r.run_id,r.started_at,sum(f.rejected) rejected,
+             bool_or(f.schema_version<>1) unsupported_schema
+      from meta.files f join meta.runs r using(run_id)
+      group by f.source,f.partition_date,r.run_id,r.started_at), latest as (
+      select distinct on(source,partition_date) * from deliveries
+      order by source,partition_date,started_at desc,run_id desc)
+      select source,partition_date from latest where rejected>%s or unsupported_schema""",
+      (config["max_rejected_rows"],)).fetchall()
+    if unresolved:
+        raise ValueError(f"Unresolved quarantined source partitions; re-deliver clean files: {unresolved}")
     rows = {r["source"]: r for r in conn.execute("select * from meta.source_status")}
     for source, rule in config["sources"].items():
         if source not in rows:
@@ -81,7 +92,7 @@ def _run_dbt(conn, run_id, schema, *, full_refresh):
     return artifact
 
 
-def _publish(conn, run_id, schema, as_of, changes):
+def _publish(conn, run_id, schema, as_of, changes, *, fail_at=None):
     tables = [r["tablename"] for r in conn.execute("select tablename from pg_tables where schemaname=%s order by tablename", (schema,))]
     if not tables or "mart_daily_location_sales" not in tables:
         raise RuntimeError("Missing analytical models")
@@ -89,8 +100,10 @@ def _publish(conn, run_id, schema, as_of, changes):
     totals = [r["row"] for r in conn.execute(sql.SQL("select to_jsonb(t) as row from (select sale_date::text, location_id, gross_sales_cents,discount_cents,refund_cents,net_sales_cents from {}.mart_daily_location_sales order by sale_date,location_id) t").format(sql.Identifier(schema))).fetchall()]
     with conn.transaction():
         # All reader views and the publication/audit ledger move together.
-        for table in tables:
+        for index, table in enumerate(tables):
             conn.execute(sql.SQL("create or replace view analytics.{} as select * from {}.{}").format(sql.Identifier(table), sql.Identifier(schema), sql.Identifier(table)))
+            if index == 0 and fail_at == "during-publish":
+                raise RuntimeError("Injected failure during-publish after first view replacement")
         pub = conn.execute("""insert into meta.publications(run_id,schema_name,as_of,source_change_id,row_counts,sales_totals)
           values(%s,%s,%s,%s,%s,%s) returning publication_id""",
           (run_id, schema, as_of, max([c["id"] for c in changes], default=0), Jsonb(counts), Jsonb(totals))).fetchone()["publication_id"]
@@ -124,7 +137,8 @@ def run(manifest: Path, *, full_refresh=False, start=None, end=None, as_of=None,
             counts = ingest(conn, run_id, verified, data_root() / "raw", as_of)
             if fail_at == "after-ingest":
                 raise RuntimeError("Injected failure after-ingest")
-            if counts["rejected"]:
+            max_rejected = json.loads((ROOT / "contracts" / "quality.json").read_text())["max_rejected_rows"]
+            if counts["rejected"] > max_rejected:
                 raise ValueError(f"Quality gate: {counts['rejected']} quarantined rows; fix source/version and rerun")
             _check_sources(conn, as_of)
             pending = conn.execute("""select c.* from meta.source_changes c where not exists
@@ -163,7 +177,7 @@ def run(manifest: Path, *, full_refresh=False, start=None, end=None, as_of=None,
             _run_dbt(conn, run_id, schema, full_refresh=full_refresh)
             if fail_at == "before-publish":
                 raise RuntimeError("Injected failure before-publish")
-            result = _publish(conn, run_id, schema, as_of, applied)
+            result = _publish(conn, run_id, schema, as_of, applied, fail_at=fail_at)
             result["ingestion"] = counts
             result["full_refresh"] = full_refresh
             return result

@@ -43,13 +43,21 @@ def test_manifest_rejects_nonportable_or_escaping_paths(tmp_path, unsafe):
         read_manifest(path)
 
 
-@pytest.mark.parametrize("schema", [True, 2, "1", None])
-def test_manifest_rejects_breaking_schema_versions(tmp_path, schema):
+@pytest.mark.parametrize("schema", [True, 0, "1", None])
+def test_manifest_rejects_invalid_schema_version_identifiers(tmp_path, schema):
     path, spec = manifest_fixture(tmp_path)
     spec["files"][0]["schema_version"] = schema
     save_manifest(path, spec)
     with pytest.raises(ValueError, match="schema version"):
         read_manifest(path)
+
+
+def test_unknown_schema_version_survives_verification_for_raw_retention(tmp_path):
+    path, spec = manifest_fixture(tmp_path)
+    spec["files"][0]["schema_version"] = 2
+    save_manifest(path, spec)
+    _, _, verified = read_manifest(path)
+    assert verified[0][0]["schema_version"] == 2
 
 
 @pytest.mark.parametrize("replacement", [[], None, {"synthetic": False, "files": []}, {"synthetic": True, "files": [{}]}])

@@ -2,6 +2,16 @@
 
 All inputs are synthetic. Exact reference fixtures live under `fixtures/`; larger data is deterministically generated from a committed seed and workload parameters. The authoritative observed benchmark artifact is a JSON report produced by `commerce benchmark`, with its runtime context and limitations. Never replace an unexecuted scenario with a claimed successful result.
 
+## Observed local batch run
+
+On 2026-11-02, the Docker batch demo completed on the Windows development machine using Docker Desktop's Linux engine and the Compose PostgreSQL service. The deterministic seed-42, seven-day, 20-orders/day workload produced 140 orders, 189 order lines, and 21 refund events. The initial build passed its dbt publication gate. Replaying the same manifest accepted the duplicate delivery with zero canonical source changes and identical published fact/mart counts and sales totals. These are synthetic demo observations, not production throughput claims.
+
+```sh
+docker compose run --build --rm runner demo
+```
+
+The Airflow runtime check and benchmark measurements are recorded separately after their execution; the batch demonstration alone does not prove scheduler execution or benchmark performance.
+
 ## Correctness demonstrations
 
 Run the source unit tests and the PostgreSQL/dbt integration suite against a disposable database:

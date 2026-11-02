@@ -10,6 +10,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import uuid
 from datetime import date
 from pathlib import Path
 
@@ -20,6 +21,9 @@ from psycopg.conninfo import conninfo_to_dict
 from psycopg.rows import dict_row
 
 from commerce.generate import write_dataset
+from commerce.db import locked_connection
+from commerce.ingest import ingest, read_manifest
+from commerce.pipeline import _check_sources
 from commerce.pipeline import run
 
 pytestmark = pytest.mark.integration
@@ -178,6 +182,12 @@ def test_schema_drift_quarantine_version_conflicts_and_retry(database, tmp_path)
     quarantine = conn.execute("select payload,raw_path,reason from meta.quarantine order by id desc limit 1").fetchone()
     assert quarantine["payload"]["quantity"] == "not-an-integer"
     assert quarantine["raw_path"] and quarantine["reason"]
+    unrelated = write_dataset(tmp_path / "unrelated", {"inventory": [records()["inventory"][3]]})
+    with pytest.raises(ValueError, match="Unresolved quarantined"):
+        run(unrelated, as_of=AS_OF)
+    assert snapshot(conn) == before
+    assert publication_count(conn) == 2
+    assert conn.execute("select dbt_results from meta.runs order by started_at desc limit 1").fetchone()["dbt_results"] is None
     fixed = dict(row, version=3)
     run(write_dataset(tmp_path / "fixed", {"order_lines": [fixed]}), as_of=AS_OF)
     assert snapshot(conn) == before
@@ -185,9 +195,14 @@ def test_schema_drift_quarantine_version_conflicts_and_retry(database, tmp_path)
     breaking["files"][0]["schema_version"] = 2
     additive.write_text(json.dumps(breaking))
     runs_before = conn.execute("select count(*) n from meta.runs").fetchone()["n"]
-    with pytest.raises(ValueError, match="schema version"):
+    with pytest.raises(ValueError, match="quarantined"):
         run(additive, as_of=AS_OF)
-    assert conn.execute("select count(*) n from meta.runs").fetchone()["n"] == runs_before
+    assert conn.execute("select count(*) n from meta.runs").fetchone()["n"] == runs_before + 1
+    broken = conn.execute("select run_id,status from meta.runs order by started_at desc limit 1").fetchone()
+    assert broken["status"] == "failed"
+    evidence = conn.execute("select raw_path,reason from meta.quarantine where run_id=%s", (broken["run_id"],)).fetchone()
+    assert "unsupported schema version" in evidence["reason"]
+    assert (Path(os.environ["COMMERCE_DATA_DIR"]) / "raw" / evidence["raw_path"]).is_file()
     assert snapshot(conn) == before
 
 
@@ -196,15 +211,17 @@ def test_failure_recovery_preserves_last_good_publication(database, tmp_path):
     run(ROOT / "fixtures" / "reference" / "manifest.json", as_of=AS_OF)
     before = snapshot(conn)
     first_schema = conn.execute("select schema_name from meta.publications").fetchone()["schema_name"]
+    first_views = conn.execute("select viewname,definition from pg_views where schemaname='analytics' order by viewname").fetchall()
     row = dict(records()["order_lines"][4], version=2, unit_price_cents=1200)
     correction = write_dataset(tmp_path / "correction", {"order_lines": [row]})
-    for stage in ("after-ingest", "before-publish"):
+    for stage in ("after-ingest", "before-publish", "during-publish"):
         with pytest.raises(RuntimeError, match="Injected failure"):
             run(correction, as_of=AS_OF, fail_at=stage)
         assert snapshot(conn) == before
         assert publication_count(conn) == 1
         assert conn.execute("select schema_name from meta.publications").fetchone()["schema_name"] == first_schema
-    assert conn.execute("select count(*) n from meta.runs where status='failed'").fetchone()["n"] == 2
+        assert conn.execute("select viewname,definition from pg_views where schemaname='analytics' order by viewname").fetchall() == first_views
+    assert conn.execute("select count(*) n from meta.runs where status='failed'").fetchone()["n"] == 3
     recovered = run(correction, as_of=AS_OF)
     assert not recovered["full_refresh"]
     assert recovered["ingestion"]["changed"] == 0  # the first attempt durably accepted the correction
@@ -254,3 +271,37 @@ def test_date_moving_correction_replaces_empty_old_partition(database, tmp_path)
     incremental = snapshot(conn)
     run(correction, as_of=AS_OF, full_refresh=True)
     assert snapshot(conn) == incremental
+
+
+def test_quality_gate_aggregates_all_partition_shards_and_requires_clean_redelivery(database, tmp_path):
+    """Exercise the source gate directly: no dbt builds are needed for this failure."""
+    bad_row = dict(records()["order_lines"][4], version=2, quantity="invalid")
+    bad = write_dataset(tmp_path / "shards", {"order_lines": [bad_row]}, validate=False)
+    good = write_dataset(tmp_path / "sibling", {"order_lines": [records()["order_lines"][5]]})
+    bad_manifest = json.loads(bad.read_text())
+    good_entry = json.loads(good.read_text())["files"][0]
+    sibling_bytes = (good.parent / good_entry["path"]).read_bytes()
+    sibling_path = "order_lines/clean_sibling.csv"
+    (bad.parent / sibling_path).write_bytes(sibling_bytes)
+    bad_manifest["files"].append(dict(good_entry, path=sibling_path))
+    bad.write_text(json.dumps(bad_manifest))
+
+    with locked_connection() as conn:
+        def deliver(manifest):
+            run_id = uuid.uuid4().hex
+            conn.execute("insert into meta.runs(run_id,status,as_of) values(%s,'failed',%s)", (run_id, AS_OF))
+            _, _, verified = read_manifest(manifest)
+            return ingest(conn, run_id, verified, tmp_path / "gate_raw", AS_OF)
+
+        deliver(ROOT / "fixtures" / "reference" / "manifest.json")
+        _check_sources(conn, AS_OF)
+        assert deliver(bad)["rejected"] == 1
+        with pytest.raises(ValueError, match="Unresolved quarantined"):
+            _check_sources(conn, AS_OF)
+        unrelated = write_dataset(tmp_path / "gate_unrelated", {"inventory": [records()["inventory"][3]]})
+        deliver(unrelated)
+        with pytest.raises(ValueError, match="Unresolved quarantined"):
+            _check_sources(conn, AS_OF)
+        clean = write_dataset(tmp_path / "gate_fixed", {"order_lines": [dict(bad_row, quantity=1)]})
+        assert deliver(clean)["rejected"] == 0
+        _check_sources(conn, AS_OF)

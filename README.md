@@ -23,7 +23,7 @@ docker compose run --rm runner query --name inventory
 docker compose run --rm runner query --name changes
 ```
 
-Money is reported in integer cents. `net_sales_cents = gross_sales_cents - discount_cents - refund_cents`; tax and tips are outside the synthetic source model. Refunds in sales marts are attributed to the original sale date. The separate event-date refund mart answers when a refund happened. Published schemas retain what was known at each successful publication, so a later correction can be traced to its source manifest.
+Source and mart money is stored in integer cents; the example sales query formats those amounts in currency units by dividing by 100. `net_sales_cents = gross_sales_cents - discount_cents - refund_cents`; tax and tips are outside the synthetic source model. Refunds in sales marts are attributed to the original sale date. The separate event-date refund mart answers when a refund happened. Published schemas retain what was known at each successful publication, so a later correction can be traced to its source manifest.
 
 Connect a SQL client to `localhost:55432`, database `commerce_analytics`, user `commerce`, password `synthetic-local-only`, or query inside the service:
 
@@ -51,20 +51,21 @@ docker compose run --rm runner run --manifest /workspace/data/incoming/manifest.
 docker compose run --rm runner run --manifest /workspace/data/incoming/manifest.json --start 2024-01-01 --end 2024-01-03
 ```
 
-The second delivery is a replay: stable keys, source versions, and payload hashes keep the canonical facts from duplicating. A selected-date rebuild uses inclusive UTC dates. `--lookback-days` bounds routine reprocessing; use an explicit historical range for corrections outside that window. `--full-refresh` rebuilds the complete analytical result from retained canonical sources. A manifest declares each source file, expected rows, partition, schema version, and checksum; never edit a file without regenerating its manifest.
+The second delivery is a replay: stable keys, source versions, and payload hashes keep the canonical facts from duplicating. A selected-date rebuild uses inclusive UTC dates. `--lookback-days` bounds routine reprocessing: a value of 7 includes the current as-of date plus seven prior dates, for eight inclusive dates. Use an explicit historical range for corrections outside that window. `--full-refresh` rebuilds the complete analytical result from retained canonical sources. A manifest declares each source file, expected rows, partition, schema version, and checksum; never edit a file without regenerating its manifest.
 
-Contract failures preserve original payloads in quarantine with actionable reasons. Compatible extra fields are retained; required-field/type failures and unsupported schema versions are explicit failures. Correct the source, use a higher record version where appropriate, generate a new valid manifest, and re-deliver it. A conflicting payload with the same business key and version is rejected rather than arbitrarily choosing a winner.
+Contract failures preserve original payloads in quarantine with actionable reasons. Compatible extra fields are retained; required-field/type failures and unsupported positive schema versions are raw-landed and quarantined. An unresolved rejected source partition continues to block publication on future runs until it receives a clean redelivery. Correct the source, use a higher record version where appropriate, generate a new valid manifest, and re-deliver it. A conflicting payload with the same business key and version is rejected rather than arbitrarily choosing a winner.
 
-Fault injection stops a run after source ingestion or immediately before publication:
+Fault injection stops a run after source ingestion, before publication, or inside the publication transaction:
 
 ```sh
 docker compose run --rm runner run --manifest /workspace/data/incoming/manifest.json --fail-at after-ingest
 docker compose run --rm runner run --manifest /workspace/data/incoming/manifest.json
 docker compose run --rm runner run --manifest /workspace/data/incoming/manifest.json --fail-at before-publish
+docker compose run --rm runner run --manifest /workspace/data/incoming/manifest.json --fail-at during-publish
 docker compose run --rm runner status
 ```
 
-The injected runs are expected to exit unsuccessfully. Source ingestion remains auditable; analysts keep the last successful publication until a retry passes the quality gate. The test suite exercises late corrections, schema changes, interrupted runs, and backfill parity with deterministic assertions.
+The injected runs are expected to exit unsuccessfully. The `during-publish` case raises after the first view replacement and proves that the transaction rolls it back. Source ingestion remains auditable; analysts keep the last successful publication until a retry passes the quality gate. The test suite exercises late corrections, schema changes, interrupted runs, and backfill parity with deterministic assertions.
 
 ## Airflow scheduling and backfills
 
@@ -86,7 +87,7 @@ Open <http://localhost:8080>, sign in as `admin` using that generated password, 
 docker compose -p commerce-schedule exec airflow airflow dags backfill commerce_batch --start-date 2024-01-01 --end-date 2024-01-09
 ```
 
-The task uses a bounded seven-day reconciliation window so a refund arriving today can update its earlier sale date. The CLI remains available for selected-date historical reprocessing outside that window without starting Airflow. `catchup=False` avoids automatically creating years of historical runs. Airflow retries finite failed tasks once; publication still requires application and dbt quality checks. Unpause the current daily schedule only after supplying source deliveries for those dates; the historical fixture does not fabricate today's feed.
+The task uses a seven-day lookback (the current date plus seven prior dates) so a refund arriving today can update its earlier sale date. The CLI remains available for selected-date historical reprocessing outside that window without starting Airflow. `catchup=False` avoids automatically creating years of historical runs. Airflow retries finite failed tasks once; publication still requires application and dbt quality checks. Unpause the current daily schedule only after supplying source deliveries for those dates; the historical fixture does not fabricate today's feed.
 
 ## Resource profiles
 

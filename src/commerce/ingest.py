@@ -49,8 +49,8 @@ def read_manifest(path: Path):
         body = file.read_bytes()
         if digest(body) != entry["sha256"]:
             raise ValueError(f"Checksum mismatch: {relative}")
-        if type(entry["schema_version"]) is not int or entry["schema_version"] != 1:
-            raise ValueError(f"Unsupported breaking schema version: {relative}")
+        if type(entry["schema_version"]) is not int or entry["schema_version"] < 1:
+            raise ValueError(f"Invalid schema version: {relative}")
         if not isinstance(entry["partition"], str) or date.fromisoformat(entry["partition"]).isoformat() != entry["partition"]:
             raise ValueError("Manifest partition must be a YYYY-MM-DD date")
         if type(entry["row_count"]) is not int or entry["row_count"] < 0:
@@ -124,7 +124,10 @@ def ingest(conn, run_id, verified, raw_root: Path, as_of: date):
     landed = []
     for entry, body in verified:
         # Durable provenance is relative to the configured raw root.
-        landed.append((entry, body, land_raw(raw_root, entry, body)))
+        raw_path = land_raw(raw_root, entry, body)
+        if entry["schema_version"] != 1 and entry["row_count"] == 0:
+            raise ValueError(f"Unsupported schema version in empty file; original retained at {raw_path}")
+        landed.append((entry, body, raw_path))
     with conn.transaction():
         for entry, body, raw_path in landed:
             source = entry["source"]
@@ -137,6 +140,11 @@ def ingest(conn, run_id, verified, raw_root: Path, as_of: date):
                     record_date = date.fromisoformat(normalized[field] if field else normalized["effective_at"][:10])
                     if record_date > as_of:
                         raise ContractError("Record is later than the run as_of date")
+                    if source == "order_lines" and any(
+                        normalized.get(field) and date.fromisoformat(normalized[field][:10]) > as_of
+                        for field in ("paid_at", "fulfilled_at")
+                    ):
+                        raise ContractError("Order lifecycle timestamp is later than the run as_of date")
                     if str(record_date) != entry["partition"]:
                         raise ContractError("Record date does not match manifest partition")
                     payload_hash = digest(json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode())

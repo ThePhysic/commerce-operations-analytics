@@ -94,7 +94,7 @@ def main(argv=None):
     load.add_argument("--end", type=date.fromisoformat)
     load.add_argument("--as-of", type=date.fromisoformat)
     load.add_argument("--lookback-days", type=int, default=7)
-    load.add_argument("--fail-at", choices=["after-ingest", "before-publish"])
+    load.add_argument("--fail-at", choices=["after-ingest", "before-publish", "during-publish"])
     sub.add_parser("status")
     q = sub.add_parser("query")
     q.add_argument("--name", required=True, choices=["sales", "refunds", "fulfillment", "inventory", "refund_events", "changes"])
