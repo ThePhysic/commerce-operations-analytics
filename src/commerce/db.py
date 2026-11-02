@@ -8,7 +8,7 @@ from pathlib import Path
 import psycopg
 from psycopg.rows import dict_row
 
-ROOT = Path(os.getenv("COMMERCE_ROOT", Path(__file__).resolve().parents[2]))
+ROOT = Path(os.getenv("COMMERCE_ROOT", Path.cwd() if (Path.cwd() / "warehouse").is_dir() else Path(__file__).resolve().parents[2]))
 
 
 def connect():
@@ -40,6 +40,7 @@ def initialize(conn):
       data_start date, data_end date, as_of date, received bigint default 0,
       accepted bigint default 0, rejected bigint default 0, changed bigint default 0,
       error_category text, error text, dbt_results jsonb, elapsed_seconds double precision);
+    alter table meta.runs add column if not exists source_manifest jsonb;
     create table if not exists landing.records (
       source text not null, business_key text not null, version integer not null,
       payload jsonb not null, payload_hash text not null, raw_path text not null,

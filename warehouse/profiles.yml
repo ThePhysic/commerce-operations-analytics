@@ -1,0 +1,14 @@
+commerce_analytics:
+  target: local
+  outputs:
+    local:
+      type: postgres
+      host: "{{ env_var('PGHOST', 'localhost') }}"
+      port: "{{ env_var('PGPORT', '5432') | int }}"
+      user: "{{ env_var('PGUSER', 'commerce') }}"
+      password: "{{ env_var('PGPASSWORD', 'commerce_local') }}"
+      dbname: "{{ env_var('PGDATABASE', 'commerce') }}"
+      schema: "{{ env_var('DBT_TARGET_SCHEMA', 'build_manual') }}"
+      threads: 2
+      connect_timeout: 10
+      retries: 1

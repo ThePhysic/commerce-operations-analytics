@@ -7,6 +7,7 @@ values or integer text. Both formats normalize to the same canonical payload.
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import date, datetime, timezone
 from functools import lru_cache
@@ -20,7 +21,8 @@ class ContractError(ValueError):
 
 CONTRACT_ROOT = Path(__file__).resolve().parent / "source_contracts"
 if not CONTRACT_ROOT.is_dir():
-    CONTRACT_ROOT = Path(__file__).resolve().parents[2] / "contracts"
+    repository_root = Path(os.getenv("COMMERCE_ROOT", Path.cwd() if (Path.cwd() / "contracts").is_dir() else Path(__file__).resolve().parents[2]))
+    CONTRACT_ROOT = repository_root / "contracts"
 
 
 @lru_cache(maxsize=8)

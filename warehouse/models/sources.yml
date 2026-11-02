@@ -1,0 +1,15 @@
+version: 2
+sources:
+  - name: landing
+    schema: landing
+    description: Contract-validated canonical records; immutable originals are retained in content-addressed raw files.
+    tables:
+      - name: records
+        description: One current highest-version payload per source and business key. Catalog business keys include effective_at.
+        columns:
+          - name: source
+            tests: [not_null]
+          - name: business_key
+            tests: [not_null]
+          - name: payload
+            tests: [not_null]

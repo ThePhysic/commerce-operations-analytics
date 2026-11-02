@@ -1,0 +1,187 @@
+version: 2
+models:
+  - name: stg_order_lines
+    description: Canonical current line payloads, one per line_id; source version and raw provenance retained.
+    columns:
+      - name: line_id
+        tests: [not_null, unique]
+      - name: order_id
+        tests: [not_null]
+      - name: status
+        tests:
+          - not_null
+          - accepted_values:
+              values: [paid, fulfilled, cancelled]
+      - name: sale_date
+        tests: [not_null]
+      - name: raw_path
+        tests: [not_null]
+  - name: stg_refunds
+    description: One current record per refund event; multiple refunds may refer to one order line.
+    columns:
+      - name: refund_id
+        tests: [not_null, unique]
+      - name: line_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_order_lines')
+              field: line_id
+  - name: stg_inventory
+    description: Daily end-of-period observation, one location-product-day; quantities count units.
+    columns:
+      - name: snapshot_id
+        tests: [not_null, unique]
+      - name: snapshot_date
+        tests: [not_null]
+  - name: stg_products
+    description: Effective-dated catalog; ingestion key contains product_id and UTC effective_at.
+    columns:
+      - name: product_id
+        tests: [not_null]
+      - name: effective_at
+        tests: [not_null]
+  - name: stg_locations
+    description: Effective-dated location catalog; ingestion key contains location_id and UTC effective_at.
+    columns:
+      - name: location_id
+        tests: [not_null]
+      - name: effective_at
+        tests: [not_null]
+  - name: dim_product
+    description: Type-2 product history at product_id/valid_from grain. Half-open UTC validity intervals; is_current identifies the open version.
+    columns:
+      - name: product_key
+        tests: [not_null, unique]
+      - name: product_id
+        tests: [not_null]
+      - name: category
+        description: Historical category in force at the sale's paid timestamp, or sale-day UTC midnight for an unpaid cancellation.
+        tests: [not_null]
+      - name: valid_from
+        tests: [not_null]
+      - name: valid_to
+        tests: [not_null]
+  - name: dim_location
+    description: Type-2 region/name history at location_id/valid_from grain. Half-open UTC validity intervals.
+    columns:
+      - name: location_key
+        tests: [not_null, unique]
+      - name: region
+        tests: [not_null]
+      - name: valid_from
+        tests: [not_null]
+      - name: valid_to
+        tests: [not_null]
+  - name: fct_order_line
+    description: One current order line, including cancellations; partitioned by sale_date. Monetary amounts are integer cents, excluding tax and tips. Late corrections replace affected sale-day partitions.
+    columns:
+      - name: line_id
+        tests: [not_null, unique]
+      - name: product_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_product')
+              field: product_key
+      - name: location_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_location')
+              field: location_key
+      - name: gross_sales_cents
+        description: Quantity times unit price for paid/fulfilled lines; zero for cancelled lines.
+        tests: [not_null]
+      - name: applied_discount_cents
+        description: Line-level applied discount; zero for cancelled lines.
+        tests: [not_null]
+      - name: source_run_id
+        description: Ingestion run that last changed the canonical source payload, not the publication run.
+        tests: [not_null]
+      - name: raw_path
+        description: Immutable content-addressed source file used to reconstruct the accepted record.
+        tests: [not_null]
+  - name: fct_refund
+    description: One refund event, attributed to its original line's sale_date, with refund_date separately retained for event-time reporting. Includes partial refunds; cancelled sales cannot be refunded.
+    columns:
+      - name: refund_id
+        tests: [not_null, unique]
+      - name: line_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('fct_order_line')
+              field: line_id
+      - name: amount_cents
+        tests: [not_null]
+      - name: sale_date
+        tests: [not_null]
+      - name: refund_date
+        tests: [not_null]
+      - name: raw_path
+        tests: [not_null]
+  - name: fct_fulfillment
+    description: One order with one consistent location, sale date, status and lifecycle timestamps across its lines. Fulfillment duration is elapsed UTC minutes from paid to fulfilled; pending/cancelled orders have null duration.
+    columns:
+      - name: order_id
+        tests: [not_null, unique]
+      - name: sale_date
+        tests: [not_null]
+  - name: fct_inventory_snapshot
+    description: One location-product-day inventory observation. Variance is actual minus expected; a stockout is observed actual quantity equal to zero, rather than inferred lost sales.
+    columns:
+      - name: snapshot_id
+        tests: [not_null, unique]
+      - name: product_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_product')
+              field: product_key
+      - name: location_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_location')
+              field: location_key
+  - name: mart_daily_location_sales
+    description: One sale_date/location, reflecting all accepted corrections and attributable refunds available at publication. Refunds aggregate per line before joining to avoid revenue fanout. Compare retained publication schemas for historical reporting-as-of answers.
+    columns:
+      - name: sale_date
+        tests: [not_null]
+      - name: location_id
+        tests: [not_null]
+      - name: net_sales_cents
+        description: Gross merchandise sales minus applied discounts minus attributable refunds; tax/tips excluded.
+        tests: [not_null]
+  - name: mart_refund_rate
+    description: One sale_date/location. Refund rate is distinct refunded orders divided by noncancelled orders; cancellation rate is cancelled/all orders. Refund rate is null when the denominator is zero.
+    columns:
+      - name: sale_date
+        tests: [not_null]
+      - name: location_id
+        tests: [not_null]
+  - name: mart_fulfillment_sla
+    description: One sale_date/location. Continuous median and p95 over fulfilled orders only, in minutes; null when none fulfilled. Counts expose pending orders.
+    columns:
+      - name: sale_date
+        tests: [not_null]
+      - name: location_id
+        tests: [not_null]
+  - name: mart_inventory_variance
+    description: One snapshot_date/location/product. Sum stockout_count divided by sum observed_snapshot_count for observed stockout frequency over a selected period.
+    columns:
+      - name: snapshot_date
+        tests: [not_null]
+      - name: product_id
+        tests: [not_null]
+      - name: location_id
+        tests: [not_null]
+  - name: mart_refunds_by_event_date
+    description: Cash-refund activity at refund_date/location grain, distinct from sale-attributed net sales. Rebuilt in full from the corrected refund fact.
+    columns:
+      - name: refund_date
+        tests: [not_null]
+      - name: location_id
+        tests: [not_null]

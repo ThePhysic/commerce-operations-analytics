@@ -1,0 +1,22 @@
+name: commerce_analytics
+version: '1.0.0'
+config-version: 2
+profile: commerce_analytics
+model-paths: [models]
+test-paths: [tests]
+macro-paths: [macros]
+clean-targets: [target, dbt_packages]
+models:
+  commerce_analytics:
+    staging:
+      +materialized: view
+    dimensions:
+      +materialized: table
+    facts:
+      +materialized: incremental
+      +incremental_strategy: append
+      +on_schema_change: fail
+    marts:
+      +materialized: incremental
+      +incremental_strategy: append
+      +on_schema_change: fail
