@@ -119,14 +119,17 @@ def run(manifest: Path, *, full_refresh=False, start=None, end=None, as_of=None,
     if lookback_days < 0:
         raise ValueError("lookback_days must be nonnegative")
     source_manifest, manifest_hash, verified = read_manifest(manifest)
+    explicit_as_of = as_of is not None
     as_of = as_of or max(date.fromisoformat(e["partition"]) for e, _ in verified)
-    if end and end > as_of:
-        raise ValueError("Backfill end cannot be after as_of")
     run_id = uuid.uuid4().hex
     schema = "build_" + run_id
     started = time.perf_counter()
     with locked_connection() as conn:
         previous = conn.execute("select * from meta.publications order by publication_id desc limit 1").fetchone()
+        if previous and not explicit_as_of:
+            as_of = max(as_of, previous["as_of"])
+        if end and end > as_of:
+            raise ValueError("Backfill end cannot be after as_of")
         if previous and as_of < previous["as_of"]:
             raise ValueError("as_of cannot move backward; query retained publication schemas for past reports")
         # A killed process leaves an inspectable candidate; the lock proves it is no longer running.

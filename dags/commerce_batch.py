@@ -21,7 +21,7 @@ with DAG(
     doc_md="""
 The source producer delivers `/workspace/data/scheduled/YYYY-MM-DD/manifest.json`
 before each run. Use scripts/stage_intervals.py for deterministic local delivery.
-The task ingests those finite files and reconciles a bounded seven-day window,
+The task ingests those finite files and reconciles the date plus seven prior dates,
 builds/tests an isolated dbt schema, and publishes only after every gate passes.
 For the deterministic fixture, use the documented historical backfill dates.
 Airflow metadata uses its own SQLite file; commerce facts use PostgreSQL.

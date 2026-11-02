@@ -53,6 +53,8 @@ docker compose run --rm runner run --manifest /workspace/data/incoming/manifest.
 
 The second delivery is a replay: stable keys, source versions, and payload hashes keep the canonical facts from duplicating. A selected-date rebuild uses inclusive UTC dates. `--lookback-days` bounds routine reprocessing: a value of 7 includes the current as-of date plus seven prior dates, for eight inclusive dates. Use an explicit historical range for corrections outside that window. `--full-refresh` rebuilds the complete analytical result from retained canonical sources. A manifest declares each source file, expected rows, partition, schema version, and checksum; never edit a file without regenerating its manifest.
 
+Without `--as-of`, a run uses the later of its manifest partitions and the last successful reporting date, so a historical correction does not move the reporting clock backward. An explicitly earlier `--as-of` is rejected; retained publication schemas provide earlier published answers.
+
 Contract failures preserve original payloads in quarantine with actionable reasons. Compatible extra fields are retained; required-field/type failures and unsupported positive schema versions are raw-landed and quarantined. An unresolved rejected source partition continues to block publication on future runs until it receives a clean redelivery. Correct the source, use a higher record version where appropriate, generate a new valid manifest, and re-deliver it. A conflicting payload with the same business key and version is rejected rather than arbitrarily choosing a winner.
 
 Fault injection stops a run after source ingestion, before publication, or inside the publication transaction:

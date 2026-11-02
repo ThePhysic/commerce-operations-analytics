@@ -21,6 +21,7 @@ from psycopg.conninfo import conninfo_to_dict
 from psycopg.rows import dict_row
 
 from commerce.generate import write_dataset
+from commerce.cli import query
 from commerce.db import locked_connection
 from commerce.ingest import ingest, read_manifest
 from commerce.pipeline import _check_sources
@@ -149,11 +150,17 @@ def test_late_refund_bounded_window_backfill_and_full_rebuild_parity(database, t
         run(late, as_of=AS_OF, lookback_days=0)
     assert snapshot(conn) == before
     assert publication_count(conn) == 1
-    backfill = run(late, as_of=AS_OF, start=date(2024, 1, 1), end=date(2024, 1, 1))
+    backfill = run(late, start=date(2024, 1, 1), end=date(2024, 1, 1))
     assert not backfill["full_refresh"]
     corrected = snapshot(conn)
     assert conn.execute("select sum(net_sales_cents) n from analytics.mart_daily_location_sales").fetchone()["n"] == 6900
     assert conn.execute("select count(*) n from analytics.fct_refund").fetchone()["n"] == 3
+    changes = query("changes")
+    assert sum(delta["delta_cents"] for delta in changes["sales_deltas"]) == -1500
+    assert {change["source"] for change in changes["source_changes"]} == {"refunds"}
+    assert {change["business_key"] for change in changes["source_changes"]} == {r["refund_id"] for r in refunds}
+    assert all(change["raw_path"] and change["before_payload"] is None for change in changes["source_changes"])
+    assert changes["row_count_deltas"]["fct_refund"] == len(refunds) == 3
     run(late, as_of=AS_OF, full_refresh=True)
     assert snapshot(conn) == corrected
     assert publication_count(conn) == 3
@@ -222,7 +229,7 @@ def test_failure_recovery_preserves_last_good_publication(database, tmp_path):
         assert conn.execute("select schema_name from meta.publications").fetchone()["schema_name"] == first_schema
         assert conn.execute("select viewname,definition from pg_views where schemaname='analytics' order by viewname").fetchall() == first_views
     assert conn.execute("select count(*) n from meta.runs where status='failed'").fetchone()["n"] == 3
-    recovered = run(correction, as_of=AS_OF)
+    recovered = run(correction)
     assert not recovered["full_refresh"]
     assert recovered["ingestion"]["changed"] == 0  # the first attempt durably accepted the correction
     assert conn.execute("select sum(net_sales_cents) n from analytics.mart_daily_location_sales").fetchone()["n"] == 7100
@@ -257,7 +264,7 @@ def test_date_moving_correction_replaces_empty_old_partition(database, tmp_path)
     moved = dict(records()["order_lines"][5], version=2,
                  sale_date="2024-01-05", paid_at="2024-01-05T12:00:00+00:00")
     correction = write_dataset(tmp_path / "moved", {"order_lines": [moved]})
-    with pytest.raises(ValueError, match="both old and new dates"):
+    with pytest.raises(ValueError, match="old/new dates|both old and new dates"):
         run(correction, as_of=AS_OF, start=AS_OF, end=AS_OF)
     assert snapshot(conn) == before
     assert publication_count(conn) == 1
@@ -305,3 +312,11 @@ def test_quality_gate_aggregates_all_partition_shards_and_requires_clean_redeliv
         clean = write_dataset(tmp_path / "gate_fixed", {"order_lines": [dict(bad_row, quantity=1)]})
         assert deliver(clean)["rejected"] == 0
         _check_sources(conn, AS_OF)
+        future = dict(bad_row, quantity=1, version=3, fulfilled_at="2024-01-06T00:00:00+00:00")
+        future_manifest = write_dataset(tmp_path / "gate_future", {"order_lines": [future]})
+        assert deliver(future_manifest)["rejected"] == 1
+        canonical = conn.execute("""select version,payload->>'fulfilled_at' as fulfilled_at
+          from landing.records where source='order_lines' and business_key='O004_1'""").fetchone()
+        assert canonical == {"version": 2, "fulfilled_at": "2024-01-04T11:30:00+00:00"}
+        reason = conn.execute("select reason from meta.quarantine order by id desc limit 1").fetchone()["reason"]
+        assert "lifecycle timestamp" in reason and "as_of" in reason

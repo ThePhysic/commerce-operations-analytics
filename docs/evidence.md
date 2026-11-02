@@ -10,7 +10,17 @@ On 2026-11-02, the Docker batch demo completed on the Windows development machin
 docker compose run --build --rm runner demo
 ```
 
-The Airflow runtime check and benchmark measurements are recorded separately after their execution; the batch demonstration alone does not prove scheduler execution or benchmark performance.
+## Observed Airflow execution
+
+On the same machine, the pinned `apache/airflow:2.11.0-python3.12` image with the isolated commerce virtual environment built successfully. `scripts/stage_intervals.py` produced nine self-contained, checksum-verified daily deliveries for 2024-01-01 through 2024-01-09. The actual Airflow backfill below executed the DAG's finite BashOperator against a separate `commerce_schedule` analytical database, using temporary SQLite Airflow metadata:
+
+```sh
+airflow dags backfill commerce_batch --start-date 2024-01-01 --end-date 2024-01-01
+```
+
+The Docker invocation of `scripts/test_airflow.sh` exited 0. Run `374f050c0c3e4082913d76ab49dc1fb7` published as-of 2024-01-01: 38 source records received/accepted, zero rejected, 27 order-line facts, 20 order lifecycle facts, six inventory snapshots, and two date/location sales rows. All 99 dbt build/test nodes completed without failed, errored, or skipped nodes. Application run time in its audit ledger was 22.815 seconds; this excludes image download/build, Airflow initialization, and CLI startup. The container had a 2 GiB memory cap and 1.5 CPU limit, and PostgreSQL had its Compose 384 MiB cap.
+
+The reproducible smoke harness parses the DAG, migrates its temporary metadata, runs the actual backfill, and asserts the warehouse publication and quality results. CI executes the same harness against a fresh service database. This observation establishes one daily scheduler execution; the complete nine-interval backfill is available through the README demonstration and is not claimed as part of this single-interval result. Detailed local logs/artifacts are ignored under `data/airflow-smoke.log` and `data/airflow-smoke/`.
 
 ## Correctness demonstrations
 

@@ -16,6 +16,8 @@ Routine lookback windows bound reprocessing. Late refunds must map to the origin
 
 Catalog effective timestamps support business-time history; ingestion timestamps record arrival time; published schema history supports what-was-known-at-publication comparisons. These times are not interchangeable. A reproducible reference as-of date is useful for fixtures, while wall-clock source lag remains an operational diagnostic.
 
+When `--as-of` is omitted, the inferred date is the maximum of manifest partitions and the previous successful publication date. This allows historical correction deliveries while preserving the reporting clock; an explicit backward as-of request is rejected.
+
 ## Local Airflow profile
 
 The optional Airflow profile uses `standalone`, SQLite metadata, and `SequentialExecutor`. It provides a real scheduler/UI and finite DAG/backfill execution without a message broker or a separate worker fleet. It runs tasks sequentially and is a development configuration. Production use would need supported metadata storage, secrets/authentication configuration, retention, observability, availability planning, and separate component management.
