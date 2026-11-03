@@ -2,14 +2,17 @@
   "synthetic": true,
   "seed": 42,
   "repeats": 3,
-  "measured_at_utc": "2026-11-02T23:18:19.318389+00:00",
+  "measured_at_utc": "2026-11-03T00:15:41.662120+00:00",
   "context": {
     "os": "Windows-11-10.0.26200-SP0",
     "python": "3.12.15",
     "cpu": "AMD64 Family 25 Model 116 Stepping 1, AuthenticAMD",
     "logical_cpus": 16,
     "host_memory_bytes": 33515835392,
-    "postgres": "PostgreSQL 16.10 (Debian 16.10-1.pgdg12+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 12.2.0-14+deb12u1) 12.2.0, 64-bit"
+    "postgres": "PostgreSQL 16.10 (Debian 16.10-1.pgdg12+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 12.2.0-14+deb12u1) 12.2.0, 64-bit",
+    "functional_revision": "1bd5884d1fb9617ed4e0a6199334e14417482d64",
+    "benchmark_module_sha256": "91995d4eb9e3129176c11aef902cf5d762b97bb285ac9aef4bb60de8ced5b997",
+    "concurrent_validation": "Collection overlapped local integration and Airflow validation sharing the PostgreSQL service and workstation; background load was not controlled or constant."
   },
   "method": "7 sale days; baseline then correction of last sale partition; compare incremental and full rebuild from identical canonical inputs; 25ms RSS sampling of client/dbt process tree; ten client-roundtrip query latency samples and EXPLAIN ANALYZE BUFFERS after ANALYZE for each incremental/full publication.",
   "limitations": [
@@ -20,7 +23,8 @@
     "Incremental always precedes full within each pair; warm-cache and sequence effects can bias comparisons.",
     "Client-tree RSS sums process RSS, including shared pages counted separately by each process; it is not unique physical memory.",
     "Measurements run on a developer workstation; other local processes are not isolated or controlled.",
-    "Small local synthetic workloads; warm caches, no distributed scaling claim; sampling can miss short memory spikes."
+    "Small local synthetic workloads; warm caches, no distributed scaling claim; sampling can miss short memory spikes.",
+    "Concurrent local validation shared the PostgreSQL service during collection; these timings are contextual and do not establish isolated performance."
   ],
   "workloads": [
     {
@@ -46,22 +50,22 @@
         {
           "repetition": 1,
           "incremental": {
-            "elapsed_seconds": 16.185186999995494,
-            "peak_client_tree_rss_bytes": 183308288,
+            "elapsed_seconds": 18.12552900001174,
+            "peak_client_tree_rss_bytes": 184995840,
             "query_latency_ms": {
               "samples": [
-                2.8617999923881143,
-                1.504000014392659,
-                1.3336999982129782,
-                1.664300012635067,
-                1.6113999881781638,
-                2.126400009728968,
-                1.1786000104621053,
-                1.6199999954551458,
-                1.554400019813329,
-                1.7491000180598348
+                3.9745999965816736,
+                2.580800006398931,
+                4.844000010052696,
+                3.4285000001545995,
+                4.43590001668781,
+                3.9800000085961074,
+                2.10390001302585,
+                3.734700003406033,
+                2.7885999879799783,
+                2.4757999926805496
               ],
-              "median": 1.6156999918166548
+              "median": 3.5816000017803162
             },
             "query_plan": [
               {
@@ -75,11 +79,11 @@
                   "Total Cost": 64.21,
                   "Plan Rows": 1,
                   "Plan Width": 32,
-                  "Actual Startup Time": 0.114,
-                  "Actual Total Time": 0.115,
+                  "Actual Startup Time": 0.16,
+                  "Actual Total Time": 0.161,
                   "Actual Rows": 1,
                   "Actual Loops": 1,
-                  "Shared Hit Blocks": 16,
+                  "Shared Hit Blocks": 23,
                   "Shared Read Blocks": 0,
                   "Shared Dirtied Blocks": 0,
                   "Shared Written Blocks": 0,
@@ -101,15 +105,15 @@
                       "Total Cost": 63.86,
                       "Plan Rows": 134,
                       "Plan Width": 8,
-                      "Actual Startup Time": 0.044,
-                      "Actual Total Time": 0.068,
+                      "Actual Startup Time": 0.058,
+                      "Actual Total Time": 0.095,
                       "Actual Rows": 134,
                       "Actual Loops": 1,
                       "Recheck Cond": "(sale_date = '2024-01-07'::date)",
                       "Rows Removed by Index Recheck": 0,
-                      "Exact Heap Blocks": 15,
+                      "Exact Heap Blocks": 22,
                       "Lossy Heap Blocks": 0,
-                      "Shared Hit Blocks": 16,
+                      "Shared Hit Blocks": 23,
                       "Shared Read Blocks": 0,
                       "Shared Dirtied Blocks": 0,
                       "Shared Written Blocks": 0,
@@ -130,8 +134,8 @@
                           "Total Cost": 5.16,
                           "Plan Rows": 134,
                           "Plan Width": 0,
-                          "Actual Startup Time": 0.015,
-                          "Actual Total Time": 0.015,
+                          "Actual Startup Time": 0.023,
+                          "Actual Total Time": 0.023,
                           "Actual Rows": 268,
                           "Actual Loops": 1,
                           "Index Cond": "(sale_date = '2024-01-07'::date)",
@@ -162,33 +166,33 @@
                   "Temp Read Blocks": 0,
                   "Temp Written Blocks": 0
                 },
-                "Planning Time": 0.19,
+                "Planning Time": 0.119,
                 "Triggers": [],
-                "Execution Time": 0.141
+                "Execution Time": 0.205
               }
             ],
             "selected_order_lines": 134,
-            "selected_lines_per_second": 8.279175273046725,
+            "selected_lines_per_second": 7.392887677921744,
             "accepted_input_rows": 134,
             "changed_input_rows": 134
           },
           "full": {
-            "elapsed_seconds": 16.108882200001972,
-            "peak_client_tree_rss_bytes": 183775232,
+            "elapsed_seconds": 19.944673399993917,
+            "peak_client_tree_rss_bytes": 184135680,
             "query_latency_ms": {
               "samples": [
-                2.3179999843705446,
-                1.5925999905448407,
-                1.3774999824818224,
-                1.6596000059507787,
-                1.594500005012378,
-                3.350299986777827,
-                1.8903000163845718,
-                1.122200017562136,
-                1.0679999832063913,
-                1.2267999991308898
+                3.0485999886877835,
+                2.2769999923184514,
+                2.449000021442771,
+                2.7534000109881163,
+                3.563900012522936,
+                6.852799997432157,
+                2.27870000526309,
+                3.4260000102221966,
+                2.905300003476441,
+                2.868900017347187
               ],
-              "median": 1.5935499977786094
+              "median": 2.887100010411814
             },
             "query_plan": [
               {
@@ -202,11 +206,11 @@
                   "Total Cost": 71.21,
                   "Plan Rows": 1,
                   "Plan Width": 32,
-                  "Actual Startup Time": 0.058,
-                  "Actual Total Time": 0.059,
+                  "Actual Startup Time": 0.131,
+                  "Actual Total Time": 0.133,
                   "Actual Rows": 1,
                   "Actual Loops": 1,
-                  "Shared Hit Blocks": 9,
+                  "Shared Hit Blocks": 15,
                   "Shared Read Blocks": 0,
                   "Shared Dirtied Blocks": 0,
                   "Shared Written Blocks": 0,
@@ -228,15 +232,15 @@
                       "Total Cost": 70.86,
                       "Plan Rows": 134,
                       "Plan Width": 8,
-                      "Actual Startup Time": 0.012,
-                      "Actual Total Time": 0.03,
+                      "Actual Startup Time": 0.023,
+                      "Actual Total Time": 0.07,
                       "Actual Rows": 134,
                       "Actual Loops": 1,
                       "Recheck Cond": "(sale_date = '2024-01-07'::date)",
                       "Rows Removed by Index Recheck": 0,
-                      "Exact Heap Blocks": 8,
+                      "Exact Heap Blocks": 14,
                       "Lossy Heap Blocks": 0,
-                      "Shared Hit Blocks": 9,
+                      "Shared Hit Blocks": 15,
                       "Shared Read Blocks": 0,
                       "Shared Dirtied Blocks": 0,
                       "Shared Written Blocks": 0,
@@ -252,13 +256,13 @@
                           "Parent Relationship": "Outer",
                           "Parallel Aware": false,
                           "Async Capable": false,
-                          "Index Name": "3838553f9d31edd6d61696c00c7aa424",
+                          "Index Name": "bd2d2a80cda08ccb12e095ff70010253",
                           "Startup Cost": 0.0,
                           "Total Cost": 5.16,
                           "Plan Rows": 134,
                           "Plan Width": 0,
-                          "Actual Startup Time": 0.008,
-                          "Actual Total Time": 0.008,
+                          "Actual Startup Time": 0.014,
+                          "Actual Total Time": 0.014,
                           "Actual Rows": 134,
                           "Actual Loops": 1,
                           "Index Cond": "(sale_date = '2024-01-07'::date)",
@@ -289,13 +293,13 @@
                   "Temp Read Blocks": 0,
                   "Temp Written Blocks": 0
                 },
-                "Planning Time": 0.047,
+                "Planning Time": 0.117,
                 "Triggers": [],
-                "Execution Time": 0.076
+                "Execution Time": 0.166
               }
             ],
             "selected_order_lines": 938,
-            "selected_lines_per_second": 58.228745381221124,
+            "selected_lines_per_second": 47.03010077870145,
             "accepted_input_rows": 134,
             "changed_input_rows": 0
           },
@@ -304,22 +308,22 @@
         {
           "repetition": 2,
           "incremental": {
-            "elapsed_seconds": 17.921450800000457,
-            "peak_client_tree_rss_bytes": 184115200,
+            "elapsed_seconds": 20.05505870000343,
+            "peak_client_tree_rss_bytes": 184619008,
             "query_latency_ms": {
               "samples": [
-                2.479899994796142,
-                1.6357999993488193,
-                2.318999991985038,
-                3.119500004686415,
-                2.211800019722432,
-                3.003799996804446,
-                1.5259999781847,
-                1.3895999873057008,
-                1.7810999997891486,
-                2.087300003040582
+                3.5146999871358275,
+                2.1763999830000103,
+                1.8122000037692487,
+                1.5493000100832433,
+                2.055999997537583,
+                4.670199996326119,
+                2.1203999931458384,
+                3.1475000141654164,
+                2.010700001846999,
+                2.1044999884907156
               ],
-              "median": 2.149550011381507
+              "median": 2.112449990818277
             },
             "query_plan": [
               {
@@ -333,11 +337,11 @@
                   "Total Cost": 64.21,
                   "Plan Rows": 1,
                   "Plan Width": 32,
-                  "Actual Startup Time": 0.198,
-                  "Actual Total Time": 0.2,
+                  "Actual Startup Time": 0.099,
+                  "Actual Total Time": 0.099,
                   "Actual Rows": 1,
                   "Actual Loops": 1,
-                  "Shared Hit Blocks": 16,
+                  "Shared Hit Blocks": 23,
                   "Shared Read Blocks": 0,
                   "Shared Dirtied Blocks": 0,
                   "Shared Written Blocks": 0,
@@ -359,15 +363,15 @@
                       "Total Cost": 63.86,
                       "Plan Rows": 134,
                       "Plan Width": 8,
-                      "Actual Startup Time": 0.029,
-                      "Actual Total Time": 0.07,
+                      "Actual Startup Time": 0.035,
+                      "Actual Total Time": 0.056,
                       "Actual Rows": 134,
                       "Actual Loops": 1,
                       "Recheck Cond": "(sale_date = '2024-01-07'::date)",
                       "Rows Removed by Index Recheck": 0,
-                      "Exact Heap Blocks": 15,
+                      "Exact Heap Blocks": 22,
                       "Lossy Heap Blocks": 0,
-                      "Shared Hit Blocks": 16,
+                      "Shared Hit Blocks": 23,
                       "Shared Read Blocks": 0,
                       "Shared Dirtied Blocks": 0,
                       "Shared Written Blocks": 0,
@@ -388,8 +392,8 @@
                           "Total Cost": 5.16,
                           "Plan Rows": 134,
                           "Plan Width": 0,
-                          "Actual Startup Time": 0.014,
-                          "Actual Total Time": 0.014,
+                          "Actual Startup Time": 0.011,
+                          "Actual Total Time": 0.011,
                           "Actual Rows": 268,
                           "Actual Loops": 1,
                           "Index Cond": "(sale_date = '2024-01-07'::date)",
@@ -420,33 +424,33 @@
                   "Temp Read Blocks": 0,
                   "Temp Written Blocks": 0
                 },
-                "Planning Time": 0.113,
+                "Planning Time": 0.073,
                 "Triggers": [],
-                "Execution Time": 0.238
+                "Execution Time": 0.123
               }
             ],
             "selected_order_lines": 134,
-            "selected_lines_per_second": 7.47707322891496,
+            "selected_lines_per_second": 6.68160597305941,
             "accepted_input_rows": 134,
             "changed_input_rows": 134
           },
           "full": {
-            "elapsed_seconds": 15.272216299985303,
-            "peak_client_tree_rss_bytes": 184991744,
+            "elapsed_seconds": 16.94459190001362,
+            "peak_client_tree_rss_bytes": 183848960,
             "query_latency_ms": {
               "samples": [
-                1.8653000006452203,
-                1.5525000053457916,
-                1.8617000023368746,
-                1.7296999867539853,
-                1.4838000060990453,
-                3.235499985748902,
-                1.5682000084780157,
-                1.2510000087786466,
-                1.9747000187635422,
-                1.5589000249747187
+                2.545799972722307,
+                1.8586000078357756,
+                2.064900007098913,
+                3.1943999929353595,
+                2.393100003246218,
+                2.383200015174225,
+                1.5891999937593937,
+                1.4229000080376863,
+                1.4509999891743064,
+                1.2587000092025846
               ],
-              "median": 1.6489499976160005
+              "median": 1.9617500074673444
             },
             "query_plan": [
               {
@@ -460,8 +464,8 @@
                   "Total Cost": 71.21,
                   "Plan Rows": 1,
                   "Plan Width": 32,
-                  "Actual Startup Time": 0.07,
-                  "Actual Total Time": 0.071,
+                  "Actual Startup Time": 0.067,
+                  "Actual Total Time": 0.067,
                   "Actual Rows": 1,
                   "Actual Loops": 1,
                   "Shared Hit Blocks": 9,
@@ -486,8 +490,8 @@
                       "Total Cost": 70.86,
                       "Plan Rows": 134,
                       "Plan Width": 8,
-                      "Actual Startup Time": 0.013,
-                      "Actual Total Time": 0.035,
+                      "Actual Startup Time": 0.01,
+                      "Actual Total Time": 0.028,
                       "Actual Rows": 134,
                       "Actual Loops": 1,
                       "Recheck Cond": "(sale_date = '2024-01-07'::date)",
@@ -510,13 +514,13 @@
                           "Parent Relationship": "Outer",
                           "Parallel Aware": false,
                           "Async Capable": false,
-                          "Index Name": "f28014af80ed2a603637b6df401df04a",
+                          "Index Name": "ce190b370b9a5c3a91bd3fbc4d27a519",
                           "Startup Cost": 0.0,
                           "Total Cost": 5.16,
                           "Plan Rows": 134,
                           "Plan Width": 0,
-                          "Actual Startup Time": 0.008,
-                          "Actual Total Time": 0.008,
+                          "Actual Startup Time": 0.006,
+                          "Actual Total Time": 0.006,
                           "Actual Rows": 134,
                           "Actual Loops": 1,
                           "Index Cond": "(sale_date = '2024-01-07'::date)",
@@ -547,13 +551,13 @@
                   "Temp Read Blocks": 0,
                   "Temp Written Blocks": 0
                 },
-                "Planning Time": 0.074,
+                "Planning Time": 0.056,
                 "Triggers": [],
-                "Execution Time": 0.091
+                "Execution Time": 0.084
               }
             ],
             "selected_order_lines": 938,
-            "selected_lines_per_second": 61.41872152510718,
+            "selected_lines_per_second": 55.35689531709796,
             "accepted_input_rows": 134,
             "changed_input_rows": 0
           },
@@ -562,22 +566,22 @@
         {
           "repetition": 3,
           "incremental": {
-            "elapsed_seconds": 17.365197099978104,
-            "peak_client_tree_rss_bytes": 184401920,
+            "elapsed_seconds": 17.52412600000389,
+            "peak_client_tree_rss_bytes": 183926784,
             "query_latency_ms": {
               "samples": [
-                2.3695999989286065,
-                1.4075999788474292,
-                1.2152999988757074,
-                1.2987999944016337,
-                1.062900002580136,
-                2.8636000060942024,
-                1.2983999913558364,
-                1.3512999867089093,
-                1.5743999974802136,
-                1.4754000003449619
+                3.1612000020686537,
+                2.073799987556413,
+                1.6007999947760254,
+                1.6164999979082495,
+                1.5130999963730574,
+                2.46979997609742,
+                1.483400003053248,
+                1.3132999883964658,
+                1.4633999962825328,
+                1.9237999804317951
               ],
-              "median": 1.3794499827781692
+              "median": 1.6086499963421375
             },
             "query_plan": [
               {
@@ -591,8 +595,8 @@
                   "Total Cost": 64.21,
                   "Plan Rows": 1,
                   "Plan Width": 32,
-                  "Actual Startup Time": 0.08,
-                  "Actual Total Time": 0.08,
+                  "Actual Startup Time": 0.108,
+                  "Actual Total Time": 0.109,
                   "Actual Rows": 1,
                   "Actual Loops": 1,
                   "Shared Hit Blocks": 16,
@@ -617,8 +621,8 @@
                       "Total Cost": 63.86,
                       "Plan Rows": 134,
                       "Plan Width": 8,
-                      "Actual Startup Time": 0.022,
-                      "Actual Total Time": 0.038,
+                      "Actual Startup Time": 0.028,
+                      "Actual Total Time": 0.053,
                       "Actual Rows": 134,
                       "Actual Loops": 1,
                       "Recheck Cond": "(sale_date = '2024-01-07'::date)",
@@ -646,8 +650,8 @@
                           "Total Cost": 5.16,
                           "Plan Rows": 134,
                           "Plan Width": 0,
-                          "Actual Startup Time": 0.01,
-                          "Actual Total Time": 0.01,
+                          "Actual Startup Time": 0.012,
+                          "Actual Total Time": 0.012,
                           "Actual Rows": 268,
                           "Actual Loops": 1,
                           "Index Cond": "(sale_date = '2024-01-07'::date)",
@@ -678,33 +682,33 @@
                   "Temp Read Blocks": 0,
                   "Temp Written Blocks": 0
                 },
-                "Planning Time": 0.065,
+                "Planning Time": 0.115,
                 "Triggers": [],
-                "Execution Time": 0.099
+                "Execution Time": 0.135
               }
             ],
             "selected_order_lines": 134,
-            "selected_lines_per_second": 7.716583879152685,
+            "selected_lines_per_second": 7.646601034480708,
             "accepted_input_rows": 134,
             "changed_input_rows": 134
           },
           "full": {
-            "elapsed_seconds": 13.440293599996949,
-            "peak_client_tree_rss_bytes": 184545280,
+            "elapsed_seconds": 15.160167800000636,
+            "peak_client_tree_rss_bytes": 183808000,
             "query_latency_ms": {
               "samples": [
-                2.085599990095943,
-                1.5829999756533653,
-                1.6362000023946166,
-                1.066299999365583,
-                1.4756000018678606,
-                3.2980999967548996,
-                1.3919999764766544,
-                1.346200006082654,
-                1.615300017874688,
-                1.6577999922446907
+                2.4770000018179417,
+                1.6029999824240804,
+                1.5951000095810741,
+                1.5313999901991338,
+                1.646199991228059,
+                4.963599989423528,
+                1.975399994989857,
+                1.6525000100955367,
+                2.2430999961216003,
+                1.8031999934464693
               ],
-              "median": 1.5991499967640266
+              "median": 1.727850001771003
             },
             "query_plan": [
               {
@@ -718,8 +722,8 @@
                   "Total Cost": 71.21,
                   "Plan Rows": 1,
                   "Plan Width": 32,
-                  "Actual Startup Time": 0.074,
-                  "Actual Total Time": 0.074,
+                  "Actual Startup Time": 0.15,
+                  "Actual Total Time": 0.151,
                   "Actual Rows": 1,
                   "Actual Loops": 1,
                   "Shared Hit Blocks": 9,
@@ -744,8 +748,8 @@
                       "Total Cost": 70.86,
                       "Plan Rows": 134,
                       "Plan Width": 8,
-                      "Actual Startup Time": 0.012,
-                      "Actual Total Time": 0.033,
+                      "Actual Startup Time": 0.025,
+                      "Actual Total Time": 0.089,
                       "Actual Rows": 134,
                       "Actual Loops": 1,
                       "Recheck Cond": "(sale_date = '2024-01-07'::date)",
@@ -768,13 +772,13 @@
                           "Parent Relationship": "Outer",
                           "Parallel Aware": false,
                           "Async Capable": false,
-                          "Index Name": "d441fb89a03e6d1c8a831cd13edb6d66",
+                          "Index Name": "0d8d4478c573baeef906e8c4419c4ec8",
                           "Startup Cost": 0.0,
                           "Total Cost": 5.16,
                           "Plan Rows": 134,
                           "Plan Width": 0,
-                          "Actual Startup Time": 0.007,
-                          "Actual Total Time": 0.007,
+                          "Actual Startup Time": 0.016,
+                          "Actual Total Time": 0.016,
                           "Actual Rows": 134,
                           "Actual Loops": 1,
                           "Index Cond": "(sale_date = '2024-01-07'::date)",
@@ -805,35 +809,35 @@
                   "Temp Read Blocks": 0,
                   "Temp Written Blocks": 0
                 },
-                "Planning Time": 0.066,
+                "Planning Time": 0.091,
                 "Triggers": [],
-                "Execution Time": 0.115
+                "Execution Time": 0.182
               }
             ],
             "selected_order_lines": 938,
-            "selected_lines_per_second": 69.79014208441198,
+            "selected_lines_per_second": 61.87266607959054,
             "accepted_input_rows": 134,
             "changed_input_rows": 0
           },
           "sales_totals_identical": true
         }
       ],
-      "median_full_seconds": 15.272216299985303,
-      "median_incremental_seconds": 17.365197099978104,
+      "median_full_seconds": 16.94459190001362,
+      "median_incremental_seconds": 18.12552900001174,
       "query_latency_ms": {
         "samples": [
-          2.085599990095943,
-          1.5829999756533653,
-          1.6362000023946166,
-          1.066299999365583,
-          1.4756000018678606,
-          3.2980999967548996,
-          1.3919999764766544,
-          1.346200006082654,
-          1.615300017874688,
-          1.6577999922446907
+          2.4770000018179417,
+          1.6029999824240804,
+          1.5951000095810741,
+          1.5313999901991338,
+          1.646199991228059,
+          4.963599989423528,
+          1.975399994989857,
+          1.6525000100955367,
+          2.2430999961216003,
+          1.8031999934464693
         ],
-        "median": 1.5991499967640266
+        "median": 1.727850001771003
       },
       "query_plan": [
         {
@@ -847,8 +851,8 @@
             "Total Cost": 71.21,
             "Plan Rows": 1,
             "Plan Width": 32,
-            "Actual Startup Time": 0.074,
-            "Actual Total Time": 0.074,
+            "Actual Startup Time": 0.15,
+            "Actual Total Time": 0.151,
             "Actual Rows": 1,
             "Actual Loops": 1,
             "Shared Hit Blocks": 9,
@@ -873,8 +877,8 @@
                 "Total Cost": 70.86,
                 "Plan Rows": 134,
                 "Plan Width": 8,
-                "Actual Startup Time": 0.012,
-                "Actual Total Time": 0.033,
+                "Actual Startup Time": 0.025,
+                "Actual Total Time": 0.089,
                 "Actual Rows": 134,
                 "Actual Loops": 1,
                 "Recheck Cond": "(sale_date = '2024-01-07'::date)",
@@ -897,13 +901,13 @@
                     "Parent Relationship": "Outer",
                     "Parallel Aware": false,
                     "Async Capable": false,
-                    "Index Name": "d441fb89a03e6d1c8a831cd13edb6d66",
+                    "Index Name": "0d8d4478c573baeef906e8c4419c4ec8",
                     "Startup Cost": 0.0,
                     "Total Cost": 5.16,
                     "Plan Rows": 134,
                     "Plan Width": 0,
-                    "Actual Startup Time": 0.007,
-                    "Actual Total Time": 0.007,
+                    "Actual Startup Time": 0.016,
+                    "Actual Total Time": 0.016,
                     "Actual Rows": 134,
                     "Actual Loops": 1,
                     "Index Cond": "(sale_date = '2024-01-07'::date)",
@@ -934,9 +938,9 @@
             "Temp Read Blocks": 0,
             "Temp Written Blocks": 0
           },
-          "Planning Time": 0.066,
+          "Planning Time": 0.091,
           "Triggers": [],
-          "Execution Time": 0.115
+          "Execution Time": 0.182
         }
       ]
     },
@@ -963,22 +967,22 @@
         {
           "repetition": 1,
           "incremental": {
-            "elapsed_seconds": 27.78857160001644,
-            "peak_client_tree_rss_bytes": 196513792,
+            "elapsed_seconds": 33.161051300005056,
+            "peak_client_tree_rss_bytes": 197300224,
             "query_latency_ms": {
               "samples": [
-                2.109199995175004,
-                2.120299992384389,
-                2.17349999002181,
-                1.4964000147301704,
-                1.7510000034235418,
-                2.7240999916102737,
-                1.4261999749578536,
-                1.9136999908369035,
-                1.865500002168119,
-                1.2461000005714595
+                4.036900005303323,
+                2.1209999977145344,
+                3.4374999813735485,
+                3.4595000033732504,
+                2.5402999890502542,
+                4.175000009126961,
+                2.0978999964427203,
+                1.950400008354336,
+                2.9024000104982406,
+                2.533199993195012
               ],
-              "median": 1.8895999965025112
+              "median": 2.7213499997742474
             },
             "query_plan": [
               {
@@ -992,8 +996,8 @@
                   "Total Cost": 604.65,
                   "Plan Rows": 1,
                   "Plan Width": 32,
-                  "Actual Startup Time": 0.328,
-                  "Actual Total Time": 0.328,
+                  "Actual Startup Time": 0.767,
+                  "Actual Total Time": 0.768,
                   "Actual Rows": 1,
                   "Actual Loops": 1,
                   "Shared Hit Blocks": 146,
@@ -1018,8 +1022,8 @@
                       "Total Cost": 601.3,
                       "Plan Rows": 1334,
                       "Plan Width": 8,
-                      "Actual Startup Time": 0.072,
-                      "Actual Total Time": 0.175,
+                      "Actual Startup Time": 0.129,
+                      "Actual Total Time": 0.399,
                       "Actual Rows": 1334,
                       "Actual Loops": 1,
                       "Recheck Cond": "(sale_date = '2024-01-07'::date)",
@@ -1047,8 +1051,8 @@
                           "Total Cost": 22.29,
                           "Plan Rows": 1334,
                           "Plan Width": 0,
-                          "Actual Startup Time": 0.039,
-                          "Actual Total Time": 0.039,
+                          "Actual Startup Time": 0.06,
+                          "Actual Total Time": 0.061,
                           "Actual Rows": 2668,
                           "Actual Loops": 1,
                           "Index Cond": "(sale_date = '2024-01-07'::date)",
@@ -1079,33 +1083,33 @@
                   "Temp Read Blocks": 0,
                   "Temp Written Blocks": 0
                 },
-                "Planning Time": 0.039,
+                "Planning Time": 0.064,
                 "Triggers": [],
-                "Execution Time": 0.34
+                "Execution Time": 0.789
               }
             ],
             "selected_order_lines": 1334,
-            "selected_lines_per_second": 48.0053461977589,
+            "selected_lines_per_second": 40.227916417106975,
             "accepted_input_rows": 1334,
             "changed_input_rows": 1334
           },
           "full": {
-            "elapsed_seconds": 19.55012689999421,
-            "peak_client_tree_rss_bytes": 195596288,
+            "elapsed_seconds": 22.92628220000188,
+            "peak_client_tree_rss_bytes": 197238784,
             "query_latency_ms": {
               "samples": [
-                3.0808000010438263,
-                2.5843000039458275,
-                2.194400003645569,
-                3.0886000022292137,
-                2.1634000004269183,
-                3.2146000012289733,
-                1.5956999850459397,
-                1.72309999470599,
-                1.900999981444329,
-                1.8859999836422503
+                2.6839000056497753,
+                2.0006000122521073,
+                2.4874999944586307,
+                2.174699999159202,
+                2.0056999928783625,
+                3.64179999451153,
+                2.0163999870419502,
+                1.7923999985214323,
+                1.6920000198297203,
+                2.1001000131946057
               ],
-              "median": 2.1789000020362437
+              "median": 2.058250000118278
             },
             "query_plan": [
               {
@@ -1119,8 +1123,8 @@
                   "Total Cost": 550.65,
                   "Plan Rows": 1,
                   "Plan Width": 32,
-                  "Actual Startup Time": 0.484,
-                  "Actual Total Time": 0.484,
+                  "Actual Startup Time": 0.516,
+                  "Actual Total Time": 0.516,
                   "Actual Rows": 1,
                   "Actual Loops": 1,
                   "Shared Hit Blocks": 74,
@@ -1145,8 +1149,8 @@
                       "Total Cost": 547.3,
                       "Plan Rows": 1334,
                       "Plan Width": 8,
-                      "Actual Startup Time": 0.034,
-                      "Actual Total Time": 0.185,
+                      "Actual Startup Time": 0.04,
+                      "Actual Total Time": 0.231,
                       "Actual Rows": 1334,
                       "Actual Loops": 1,
                       "Recheck Cond": "(sale_date = '2024-01-07'::date)",
@@ -1169,13 +1173,13 @@
                           "Parent Relationship": "Outer",
                           "Parallel Aware": false,
                           "Async Capable": false,
-                          "Index Name": "936583ad746abfe07859a3297c6fac7f",
+                          "Index Name": "f64543518307e7fdcbcb3816476e89c9",
                           "Startup Cost": 0.0,
                           "Total Cost": 18.29,
                           "Plan Rows": 1334,
                           "Plan Width": 0,
-                          "Actual Startup Time": 0.026,
-                          "Actual Total Time": 0.026,
+                          "Actual Startup Time": 0.03,
+                          "Actual Total Time": 0.03,
                           "Actual Rows": 1334,
                           "Actual Loops": 1,
                           "Index Cond": "(sale_date = '2024-01-07'::date)",
@@ -1208,11 +1212,11 @@
                 },
                 "Planning Time": 0.064,
                 "Triggers": [],
-                "Execution Time": 0.503
+                "Execution Time": 0.535
               }
             ],
             "selected_order_lines": 9338,
-            "selected_lines_per_second": 477.64395841352643,
+            "selected_lines_per_second": 407.30546359580427,
             "accepted_input_rows": 1334,
             "changed_input_rows": 0
           },
@@ -1221,22 +1225,22 @@
         {
           "repetition": 2,
           "incremental": {
-            "elapsed_seconds": 30.362236599990865,
-            "peak_client_tree_rss_bytes": 195817472,
+            "elapsed_seconds": 36.054274299996905,
+            "peak_client_tree_rss_bytes": 196276224,
             "query_latency_ms": {
               "samples": [
-                3.0900000128895044,
-                2.4830999900586903,
-                1.6758999845478684,
-                2.3734999995213,
-                1.8141000182367861,
-                2.6606000028550625,
-                2.704799990169704,
-                1.8062999879475683,
-                1.287199993385002,
-                1.891399995656684
+                3.2081000099424273,
+                2.2604000114370137,
+                1.9647000008262694,
+                2.35280001652427,
+                2.6692000101320446,
+                3.2436999899800867,
+                1.8506999767851084,
+                1.8638999899849296,
+                2.083300001686439,
+                1.9977999909315258
               ],
-              "median": 2.132449997588992
+              "median": 2.1718500065617263
             },
             "query_plan": [
               {
@@ -1250,8 +1254,8 @@
                   "Total Cost": 604.65,
                   "Plan Rows": 1,
                   "Plan Width": 32,
-                  "Actual Startup Time": 1.043,
-                  "Actual Total Time": 1.044,
+                  "Actual Startup Time": 0.841,
+                  "Actual Total Time": 0.87,
                   "Actual Rows": 1,
                   "Actual Loops": 1,
                   "Shared Hit Blocks": 146,
@@ -1276,8 +1280,8 @@
                       "Total Cost": 601.3,
                       "Plan Rows": 1334,
                       "Plan Width": 8,
-                      "Actual Startup Time": 0.186,
-                      "Actual Total Time": 0.409,
+                      "Actual Startup Time": 0.18,
+                      "Actual Total Time": 0.486,
                       "Actual Rows": 1334,
                       "Actual Loops": 1,
                       "Recheck Cond": "(sale_date = '2024-01-07'::date)",
@@ -1305,8 +1309,8 @@
                           "Total Cost": 22.29,
                           "Plan Rows": 1334,
                           "Plan Width": 0,
-                          "Actual Startup Time": 0.064,
-                          "Actual Total Time": 0.064,
+                          "Actual Startup Time": 0.092,
+                          "Actual Total Time": 0.12,
                           "Actual Rows": 2668,
                           "Actual Loops": 1,
                           "Index Cond": "(sale_date = '2024-01-07'::date)",
@@ -1337,33 +1341,33 @@
                   "Temp Read Blocks": 0,
                   "Temp Written Blocks": 0
                 },
-                "Planning Time": 0.08,
+                "Planning Time": 0.056,
                 "Triggers": [],
-                "Execution Time": 1.065
+                "Execution Time": 0.892
               }
             ],
             "selected_order_lines": 1334,
-            "selected_lines_per_second": 43.93615719338678,
+            "selected_lines_per_second": 36.999773976871154,
             "accepted_input_rows": 1334,
             "changed_input_rows": 1334
           },
           "full": {
-            "elapsed_seconds": 19.595264399977168,
-            "peak_client_tree_rss_bytes": 195403776,
+            "elapsed_seconds": 22.50949359999504,
+            "peak_client_tree_rss_bytes": 196079616,
             "query_latency_ms": {
               "samples": [
-                2.5319000124000013,
-                2.196599991293624,
-                2.406999992672354,
-                2.0367999968584627,
-                1.8038999987766147,
-                3.84920000215061,
-                2.345799992326647,
-                2.5018000160343945,
-                2.0889000152237713,
-                2.095600008033216
+                2.8692999912891537,
+                1.9262999994680285,
+                2.0627000194508582,
+                1.6370000084862113,
+                1.7101999837905169,
+                2.841300010913983,
+                1.6200999962165952,
+                1.5445000026375055,
+                2.2447999799624085,
+                2.1964999905321747
               ],
-              "median": 2.2711999918101355
+              "median": 1.9945000094594434
             },
             "query_plan": [
               {
@@ -1377,8 +1381,8 @@
                   "Total Cost": 550.65,
                   "Plan Rows": 1,
                   "Plan Width": 32,
-                  "Actual Startup Time": 0.552,
-                  "Actual Total Time": 0.553,
+                  "Actual Startup Time": 0.666,
+                  "Actual Total Time": 0.667,
                   "Actual Rows": 1,
                   "Actual Loops": 1,
                   "Shared Hit Blocks": 74,
@@ -1403,8 +1407,8 @@
                       "Total Cost": 547.3,
                       "Plan Rows": 1334,
                       "Plan Width": 8,
-                      "Actual Startup Time": 0.038,
-                      "Actual Total Time": 0.228,
+                      "Actual Startup Time": 0.061,
+                      "Actual Total Time": 0.282,
                       "Actual Rows": 1334,
                       "Actual Loops": 1,
                       "Recheck Cond": "(sale_date = '2024-01-07'::date)",
@@ -1427,13 +1431,13 @@
                           "Parent Relationship": "Outer",
                           "Parallel Aware": false,
                           "Async Capable": false,
-                          "Index Name": "85765c55901eaf926e2ae8ecc4b26e69",
+                          "Index Name": "7b440354b0270d0f7489862d461285a1",
                           "Startup Cost": 0.0,
                           "Total Cost": 18.29,
                           "Plan Rows": 1334,
                           "Plan Width": 0,
-                          "Actual Startup Time": 0.028,
-                          "Actual Total Time": 0.028,
+                          "Actual Startup Time": 0.046,
+                          "Actual Total Time": 0.047,
                           "Actual Rows": 1334,
                           "Actual Loops": 1,
                           "Index Cond": "(sale_date = '2024-01-07'::date)",
@@ -1464,13 +1468,13 @@
                   "Temp Read Blocks": 0,
                   "Temp Written Blocks": 0
                 },
-                "Planning Time": 0.074,
+                "Planning Time": 0.104,
                 "Triggers": [],
-                "Execution Time": 0.575
+                "Execution Time": 0.696
               }
             ],
             "selected_order_lines": 9338,
-            "selected_lines_per_second": 476.54371022474595,
+            "selected_lines_per_second": 414.8471825240021,
             "accepted_input_rows": 1334,
             "changed_input_rows": 0
           },
@@ -1479,22 +1483,22 @@
         {
           "repetition": 3,
           "incremental": {
-            "elapsed_seconds": 31.69911359998514,
-            "peak_client_tree_rss_bytes": 195629056,
+            "elapsed_seconds": 32.09271440000157,
+            "peak_client_tree_rss_bytes": 196411392,
             "query_latency_ms": {
               "samples": [
-                3.6931999784428626,
-                2.9113999917171896,
-                2.497799985576421,
-                2.2896000009495765,
-                2.2336000110954046,
-                3.3481999998912215,
-                2.157599985366687,
-                2.768100006505847,
-                2.273600024636835,
-                2.0892000175081193
+                2.900099992984906,
+                3.109800018137321,
+                2.4237000034190714,
+                2.7131999959237874,
+                2.565400005551055,
+                3.388300014194101,
+                1.9296999962534755,
+                1.838000025600195,
+                1.6138000064529479,
+                2.151399996364489
               ],
-              "median": 2.3936999932629988
+              "median": 2.4945500044850633
             },
             "query_plan": [
               {
@@ -1508,8 +1512,8 @@
                   "Total Cost": 604.65,
                   "Plan Rows": 1,
                   "Plan Width": 32,
-                  "Actual Startup Time": 0.734,
-                  "Actual Total Time": 0.735,
+                  "Actual Startup Time": 0.824,
+                  "Actual Total Time": 0.825,
                   "Actual Rows": 1,
                   "Actual Loops": 1,
                   "Shared Hit Blocks": 146,
@@ -1534,8 +1538,8 @@
                       "Total Cost": 601.3,
                       "Plan Rows": 1334,
                       "Plan Width": 8,
-                      "Actual Startup Time": 0.158,
-                      "Actual Total Time": 0.379,
+                      "Actual Startup Time": 0.133,
+                      "Actual Total Time": 0.389,
                       "Actual Rows": 1334,
                       "Actual Loops": 1,
                       "Recheck Cond": "(sale_date = '2024-01-07'::date)",
@@ -1563,8 +1567,8 @@
                           "Total Cost": 22.29,
                           "Plan Rows": 1334,
                           "Plan Width": 0,
-                          "Actual Startup Time": 0.086,
-                          "Actual Total Time": 0.087,
+                          "Actual Startup Time": 0.062,
+                          "Actual Total Time": 0.062,
                           "Actual Rows": 2668,
                           "Actual Loops": 1,
                           "Index Cond": "(sale_date = '2024-01-07'::date)",
@@ -1595,33 +1599,33 @@
                   "Temp Read Blocks": 0,
                   "Temp Written Blocks": 0
                 },
-                "Planning Time": 0.084,
+                "Planning Time": 0.086,
                 "Triggers": [],
-                "Execution Time": 0.759
+                "Execution Time": 0.848
               }
             ],
             "selected_order_lines": 1334,
-            "selected_lines_per_second": 42.08319566388839,
+            "selected_lines_per_second": 41.5670666984758,
             "accepted_input_rows": 1334,
             "changed_input_rows": 1334
           },
           "full": {
-            "elapsed_seconds": 24.57102569998824,
-            "peak_client_tree_rss_bytes": 195166208,
+            "elapsed_seconds": 21.62472429999616,
+            "peak_client_tree_rss_bytes": 196481024,
             "query_latency_ms": {
               "samples": [
-                2.486000012140721,
-                1.7809999990276992,
-                2.048900001682341,
-                2.387599990470335,
-                2.6151999772991985,
-                2.973700000438839,
-                2.246000018203631,
-                2.774900000076741,
-                2.064000000245869,
-                2.2185000125318766
+                3.153600002406165,
+                2.293000026838854,
+                2.7089999930467457,
+                1.965200004633516,
+                2.1140000026207417,
+                2.886300004320219,
+                1.771900017047301,
+                2.267300005769357,
+                2.6231000083498657,
+                2.167900005588308
               ],
-              "median": 2.316800004336983
+              "median": 2.2801500163041055
             },
             "query_plan": [
               {
@@ -1635,8 +1639,8 @@
                   "Total Cost": 550.65,
                   "Plan Rows": 1,
                   "Plan Width": 32,
-                  "Actual Startup Time": 0.58,
-                  "Actual Total Time": 0.581,
+                  "Actual Startup Time": 0.814,
+                  "Actual Total Time": 0.815,
                   "Actual Rows": 1,
                   "Actual Loops": 1,
                   "Shared Hit Blocks": 74,
@@ -1661,8 +1665,8 @@
                       "Total Cost": 547.3,
                       "Plan Rows": 1334,
                       "Plan Width": 8,
-                      "Actual Startup Time": 0.05,
-                      "Actual Total Time": 0.255,
+                      "Actual Startup Time": 0.066,
+                      "Actual Total Time": 0.365,
                       "Actual Rows": 1334,
                       "Actual Loops": 1,
                       "Recheck Cond": "(sale_date = '2024-01-07'::date)",
@@ -1685,13 +1689,13 @@
                           "Parent Relationship": "Outer",
                           "Parallel Aware": false,
                           "Async Capable": false,
-                          "Index Name": "716badd2ec5168092bc724d5a8a28058",
+                          "Index Name": "69dee3adf85f13537be2c565317e899e",
                           "Startup Cost": 0.0,
                           "Total Cost": 18.29,
                           "Plan Rows": 1334,
                           "Plan Width": 0,
-                          "Actual Startup Time": 0.039,
-                          "Actual Total Time": 0.039,
+                          "Actual Startup Time": 0.05,
+                          "Actual Total Time": 0.051,
                           "Actual Rows": 1334,
                           "Actual Loops": 1,
                           "Index Cond": "(sale_date = '2024-01-07'::date)",
@@ -1722,35 +1726,35 @@
                   "Temp Read Blocks": 0,
                   "Temp Written Blocks": 0
                 },
-                "Planning Time": 0.092,
+                "Planning Time": 0.095,
                 "Triggers": [],
-                "Execution Time": 0.604
+                "Execution Time": 0.844
               }
             ],
             "selected_order_lines": 9338,
-            "selected_lines_per_second": 380.0411148487167,
+            "selected_lines_per_second": 431.82053423921144,
             "accepted_input_rows": 1334,
             "changed_input_rows": 0
           },
           "sales_totals_identical": true
         }
       ],
-      "median_full_seconds": 19.595264399977168,
-      "median_incremental_seconds": 30.362236599990865,
+      "median_full_seconds": 22.50949359999504,
+      "median_incremental_seconds": 33.161051300005056,
       "query_latency_ms": {
         "samples": [
-          2.486000012140721,
-          1.7809999990276992,
-          2.048900001682341,
-          2.387599990470335,
-          2.6151999772991985,
-          2.973700000438839,
-          2.246000018203631,
-          2.774900000076741,
-          2.064000000245869,
-          2.2185000125318766
+          3.153600002406165,
+          2.293000026838854,
+          2.7089999930467457,
+          1.965200004633516,
+          2.1140000026207417,
+          2.886300004320219,
+          1.771900017047301,
+          2.267300005769357,
+          2.6231000083498657,
+          2.167900005588308
         ],
-        "median": 2.316800004336983
+        "median": 2.2801500163041055
       },
       "query_plan": [
         {
@@ -1764,8 +1768,8 @@
             "Total Cost": 550.65,
             "Plan Rows": 1,
             "Plan Width": 32,
-            "Actual Startup Time": 0.58,
-            "Actual Total Time": 0.581,
+            "Actual Startup Time": 0.814,
+            "Actual Total Time": 0.815,
             "Actual Rows": 1,
             "Actual Loops": 1,
             "Shared Hit Blocks": 74,
@@ -1790,8 +1794,8 @@
                 "Total Cost": 547.3,
                 "Plan Rows": 1334,
                 "Plan Width": 8,
-                "Actual Startup Time": 0.05,
-                "Actual Total Time": 0.255,
+                "Actual Startup Time": 0.066,
+                "Actual Total Time": 0.365,
                 "Actual Rows": 1334,
                 "Actual Loops": 1,
                 "Recheck Cond": "(sale_date = '2024-01-07'::date)",
@@ -1814,13 +1818,13 @@
                     "Parent Relationship": "Outer",
                     "Parallel Aware": false,
                     "Async Capable": false,
-                    "Index Name": "716badd2ec5168092bc724d5a8a28058",
+                    "Index Name": "69dee3adf85f13537be2c565317e899e",
                     "Startup Cost": 0.0,
                     "Total Cost": 18.29,
                     "Plan Rows": 1334,
                     "Plan Width": 0,
-                    "Actual Startup Time": 0.039,
-                    "Actual Total Time": 0.039,
+                    "Actual Startup Time": 0.05,
+                    "Actual Total Time": 0.051,
                     "Actual Rows": 1334,
                     "Actual Loops": 1,
                     "Index Cond": "(sale_date = '2024-01-07'::date)",
@@ -1851,9 +1855,9 @@
             "Temp Read Blocks": 0,
             "Temp Written Blocks": 0
           },
-          "Planning Time": 0.092,
+          "Planning Time": 0.095,
           "Triggers": [],
-          "Execution Time": 0.604
+          "Execution Time": 0.844
         }
       ]
     }

@@ -10,7 +10,7 @@ On 2026-11-02, the Docker batch demo completed on the Windows development machin
 docker compose run --build --rm runner demo
 ```
 
-## Observed Airflow execution
+## Original single-interval Airflow observation
 
 On the same machine, the pinned `apache/airflow:2.11.0-python3.12` image with the isolated commerce virtual environment built successfully. `scripts/stage_intervals.py` produced nine self-contained, checksum-verified daily deliveries for 2024-01-01 through 2024-01-09. The actual Airflow backfill below executed the DAG's finite BashOperator against a separate `commerce_schedule` analytical database, using temporary SQLite Airflow metadata:
 
@@ -20,7 +20,49 @@ airflow dags backfill commerce_batch --start-date 2024-01-01 --end-date 2024-01-
 
 The Docker invocation of `scripts/test_airflow.sh` exited 0. Run `374f050c0c3e4082913d76ab49dc1fb7` published as-of 2024-01-01: 38 source records received/accepted, zero rejected, 27 order-line facts, 20 order lifecycle facts, six inventory snapshots, and two date/location sales rows. All 99 dbt build/test nodes completed without failed, errored, or skipped nodes. Application run time in its audit ledger was 22.815 seconds; this excludes image download/build, Airflow initialization, and CLI startup. The container had a 2 GiB memory cap and 1.5 CPU limit, and PostgreSQL had its Compose 384 MiB cap.
 
-The reproducible smoke harness parses the DAG, migrates its temporary metadata, runs the actual backfill, and asserts the warehouse publication and quality results. CI executes the same harness against a fresh service database. This observation establishes one daily scheduler execution; the complete nine-interval backfill is available through the README demonstration and is not claimed as part of this single-interval result. Detailed local logs/artifacts are ignored under `data/airflow-smoke.log` and `data/airflow-smoke/`.
+At that earlier revision, the smoke harness parsed the DAG, migrated temporary metadata, ran one backfill interval, and asserted warehouse publication and quality results. This historical observation establishes one daily scheduler execution; it does not describe the revised shared-volume/failure-recovery harness below. Detailed original logs/artifacts remain ignored under `data/airflow-smoke.log` and `data/airflow-smoke/`.
+
+## Follow-up fixes and current validation
+
+The follow-up audit identified seven missing cases: Linux artifact ownership,
+old-snapshot reads during publication, end-of-day dimension attribution, additive
+partition-field collisions, durable input rejection, skipped initial daily
+coverage, and conflicting-version resolution. Their implementation and regression
+coverage are recorded in the [follow-up review record](reviews/followup-fixes.md).
+
+The complete revised native suite passed **142 tests in 555.36 seconds** with
+disposable PostgreSQL databases. Independent Astra medium review additionally
+reran the inventory-history and scheduling regressions: **3 passed in 105.36
+seconds**. Current successful dbt builds have 16 models and 84 data tests (100
+nodes), including independent inventory closing-day history validation. Older
+83-test/99-node observations in this report are historical, not current counts.
+
+The updated `scripts/test_container_workflow.sh` prepares real Linux shared
+artifact and metadata mounts, runs the nonroot batch producer, and executes the
+actual Airflow DAG. It injects a missing first delivery, verifies that the later
+interval cannot publish through the gap, repairs the failed/blocked interval
+range, and retries the older interval after later publication. It also verifies
+that initialization preserves evidence bytes and supports migration of existing
+root-owned artifacts and prior Airflow SQLite/log volumes. CI now runs this
+shared-mount workflow rather than the old no-mount single-interval smoke.
+
+The default UID 50000 local workflow passed against persisted metadata, producing
+27, 54, and 54 order lines at reporting horizons January 1, January 2, and January
+2 respectively. Each publication passed all 100 dbt nodes. The full UID 1000
+Linux-bind round also exited 0: it migrated the previous round's actual SQLite
+and log volumes, preserved raw evidence, executed the missing-first-delivery
+failure, recovered both days to 54 lines, and retried January 1 without moving
+the reporting clock back from January 2. The exact dbt documentation command in
+the README also completed under UID 1000, generating its 16-model/84-test catalog.
+
+Three independent recovery-helper guard checks rejected scheduled tasks, a live
+backfill lease, and an unpaused DAG without changing interval/task/history rows.
+Initializer checks refused unsafe symlinks/hardlinks without modifying external
+targets. A second initialization performed zero ownership/mode writes, preserving
+ctime, bytes, owner, and permissions. These checks used dedicated disposable
+Linux mounts/databases, not the regular demo database. Logs remain ignored under
+`data/audit_ops/bind-workflow-final.log`, `default-helper-recovery.log`, and
+`recovery-guards.log`.
 
 ## Correctness demonstrations
 

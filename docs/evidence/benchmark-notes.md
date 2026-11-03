@@ -2,31 +2,37 @@
 
 The complete machine-readable observations are in [benchmark.json](benchmark.json).
 All business records are deterministic synthetic data with seed 42. Measurements
-began at 2026-11-02 23:18:19 UTC. The native client ran on Windows 11 with Python
+began at 2026-11-03 00:15:41 UTC. The native client ran on Windows 11 with Python
 3.12.15, 16 logical CPUs and 31.21 GiB of host memory. PostgreSQL 16.10 ran through
 the project's local Docker service, capped at one CPU and 384 MiB. The native
 Python/dbt client did not run inside the runner container's memory or CPU cap.
 
-This collection includes the durable accepted-source reporting-horizon guard and
-record-specific quarantine resolution policy introduced during review. After the
-measurements were collected, JSON parsing gained strict nonstandard/non-finite
-number checks and explicit malformed-JSON quarantine diagnostics. Generated
-benchmark inputs contain finite integers and strings and do not exercise those
-error paths. No observed measurements were edited, and the benchmark was not
-rerun after that narrow parser change; the timings describe the measured revision
-rather than an exact remeasurement of the final parser callbacks.
+This is a fresh collection after functional revision `1bd5884`, including durable
+file blockers, safe Unicode and storage-range rejection, strict conflict
+recovery, explicit daily coverage, and the inventory end-of-day dimension rule.
+The benchmark, ingestion, pipeline, contract, coverage, and warehouse files
+matched that revision throughout collection. The JSON records the full revision
+and benchmark program hash. Valid generated inputs exercise the normal pipeline;
+fault-recovery behavior is verified separately by the integration suite. The
+benchmark queries analytical views directly and does not measure the consumer
+read API's publication-pinning path.
+
+Collection overlapped integration and Airflow validation on the same local
+PostgreSQL service and workstation. Background load was neither isolated nor
+constant. These observations document the current run under that context; they
+do not establish isolated performance or the runtime effect of individual fixes.
 
 The recorded command was:
 
 ```powershell
-.venv\Scripts\python.exe -m commerce.cli benchmark --small 100 --large 1000 --repeats 3 --output docs/evidence/benchmark.json
+.venv\Scripts\commerce.exe benchmark --small 100 --large 1000 --repeats 3 --output docs/evidence/benchmark.json
 ```
 
 The command used `COMMERCE_DATABASE_URL` for the local Compose PostgreSQL service.
 It created a uniquely named disposable benchmark database, reset its schemas
 between workload sizes, and dropped that database on completion. It preserved the
-regular demo database. A separate 10/20-orders-per-day, one-repeat smoke benchmark
-completed successfully before the recorded run.
+regular demo database. Removal of the disposable database was verified after
+collection. All measured sample values are retained unchanged.
 
 ## Method
 
@@ -43,7 +49,10 @@ different source update work, rather than isolated transformation timings.
 Each pair compares the saved daily-location sales snapshots, including gross,
 discounts, refunds, and net sales. All six comparisons passed. The report's
 `sales_totals_identical` field describes this assertion; broader reference-answer
-and backfill parity checks belong to the integration suite.
+and backfill parity checks belong to the integration suite. The report was checked
+for six successful comparisons, twelve measured plans, and 120 latency
+observations. Actual fact counts were 938/9,338 order lines, 91/910 refunds,
+700/7,000 order-level fulfillment rows, and 42 inventory snapshots per workload.
 
 ## Observations
 
@@ -53,11 +62,11 @@ latency is the median of all 30 client-roundtrip observations per variant.
 
 | Workload | Order lines | Incremental selected lines | Incremental runtime | Full runtime | Incremental peak RSS | Full peak RSS | Incremental query | Full query |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 100 orders/day | 938 | 134 | 17.37 s | 15.27 s | 175.86 MiB | 176.42 MiB | 1.616 ms | 1.594 ms |
-| 1,000 orders/day | 9,338 | 1,334 | 30.36 s | 19.60 s | 187.41 MiB | 186.54 MiB | 2.166 ms | 2.232 ms |
+| 100 orders/day | 938 | 134 | 18.13 s | 16.94 s | 176.43 MiB | 175.61 MiB | 2.148 ms | 2.278 ms |
+| 1,000 orders/day | 9,338 | 1,334 | 33.16 s | 22.51 s | 188.16 MiB | 188.10 MiB | 2.478 ms | 2.141 ms |
 
-Median selected-order-line throughput over the entire pipeline was 7.72 and
-43.94 lines/sec for incremental runs, versus 61.42 and 476.54 lines/sec for full
+Median selected-order-line throughput over the entire pipeline was 7.39 and
+40.23 lines/sec for incremental runs, versus 55.36 and 414.85 lines/sec for full
 runs. The incremental numerator is one sale partition; the full numerator is all
 seven sale partitions. These values do not measure total tuples scanned or raw
 SQL operator throughput.
@@ -73,16 +82,17 @@ isolate the cost of each contributing stage.
 The query sums gross sales for the final sale date. Each incremental/full
 publication is analyzed before ten latency observations and an
 `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` observation. Both variants used a bitmap
-index scan feeding a bitmap heap scan in all repetitions. Scans returned 134 of
+index scan feeding a bitmap heap scan in all repetitions. Heap scans returned 134 of
 938 lines in the small workload and 1,334 of 9,338 lines in the larger workload.
-Small-workload heap scans recorded 16 shared-hit blocks incrementally versus 9
-after full rebuilds. Larger incremental heap scans recorded 146 shared-hit
+Small-workload heap scans recorded 16–23 shared-hit blocks incrementally versus
+9–15 after full rebuilds. Larger incremental heap scans recorded 146 shared-hit
 blocks versus 74 after full rebuilds. All recorded heap scans had zero shared-read
 blocks, so these observations characterize warm-cache access.
 
 PostgreSQL/server memory is excluded from the client RSS figures. Summed process
 RSS can count shared pages more than once, and sampling can miss short peaks.
-Other workstation processes were not isolated. Incremental always precedes full
+Other workstation processes and the concurrent validation sharing PostgreSQL were
+not isolated. Incremental always precedes full
 within a pair, introducing sequence/cache bias. Three repetitions and modest
 local synthetic datasets do not support statistical significance, production
 capacity, cloud-warehouse performance, or distributed-scaling claims. The JSON
