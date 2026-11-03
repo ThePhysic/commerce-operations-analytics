@@ -42,7 +42,10 @@ jobs:
             requirements-dev.lock
       - run: python -m pip install -r requirements-dev.lock
       - run: python -m pip install --no-deps .
-      - run: python -m pytest -q --basetemp=data/pytest
+      - name: Run tests and retain failure diagnostics
+        run: |
+          mkdir -p data
+          python -m pytest -q --basetemp=data/pytest
       - name: Validate Compose profiles
         run: docker compose config --quiet
       - name: Build batch image
