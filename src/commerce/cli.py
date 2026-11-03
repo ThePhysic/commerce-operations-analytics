@@ -11,6 +11,7 @@ from pathlib import Path
 from .db import ROOT, connect, initialize, locked_connection
 from .generate import generate
 from .pipeline import data_root, run
+from .reader import pinned_publication
 
 
 def emit(value):
@@ -23,7 +24,7 @@ def quarantine(action, *, id=None, reason=None, all=False):
         raise ValueError("A nonempty operator resolution reason is required")
     with locked_connection() as conn:
         if action == "list":
-            return conn.execute("""select id,source,business_key,source_version,raw_path,reason,run_id,
+            return conn.execute("""select id,issue_kind,source,business_key,source_version,raw_path,reason,run_id,
               created_at,resolved_at,resolved_by_run_id,resolution_reason from meta.quarantine
               where (%s or resolved_at is null) order by id""", (all,)).fetchall()
         if action != "resolve":
@@ -65,10 +66,11 @@ def status():
         }
 
 
-def query(name):
-    with connect() as conn:
+def query(name, publication_id=None):
+    with pinned_publication(publication_id=publication_id) as pinned:
+        conn = pinned.connection
         if name == "changes":
-            pubs = conn.execute("select * from meta.publications order by publication_id desc limit 2").fetchall()
+            pubs = conn.execute("select * from meta.publications where publication_id<=%s order by publication_id desc limit 2", (pinned.publication_id,)).fetchall()
             if not pubs:
                 return {"message": "No publication yet"}
             latest = pubs[0]
@@ -86,10 +88,7 @@ def query(name):
             prior_counts = pubs[1]["row_counts"] if len(pubs)>1 else {}
             row_deltas = {k: latest["row_counts"].get(k,0)-prior_counts.get(k,0) for k in latest["row_counts"].keys() | prior_counts.keys()}
             return {"publication_id": latest["publication_id"], "previous_id": pubs[1]["publication_id"] if len(pubs)>1 else None, "sales_deltas": deltas, "source_changes": sources, "row_counts": latest["row_counts"], "row_count_deltas": row_deltas}
-        path = ROOT / "queries" / f"{name}.sql"
-        if name not in {"sales", "refunds", "fulfillment", "inventory", "refund_events"} or not path.is_file():
-            raise ValueError("Unknown query name")
-        return conn.execute(path.read_text()).fetchall()
+        return pinned.query(name)
 
 
 def demo(output=None):
@@ -121,6 +120,8 @@ def main(argv=None):
     load.add_argument("--end", type=date.fromisoformat)
     load.add_argument("--as-of", type=date.fromisoformat)
     load.add_argument("--lookback-days", type=int, default=7)
+    load.add_argument("--expected-start", type=date.fromisoformat,
+                      help="Persist required daily coverage before reading files; scheduled logical date")
     load.add_argument("--fail-at", choices=["after-ingest", "before-publish", "during-publish"])
     sub.add_parser("status")
     quarantined = sub.add_parser("quarantine", help="Inspect or explicitly resolve retained quarantine records")
@@ -132,10 +133,12 @@ def main(argv=None):
     resolved.add_argument("--reason", required=True)
     q = sub.add_parser("query")
     q.add_argument("--name", required=True, choices=["sales", "refunds", "fulfillment", "inventory", "refund_events", "changes"])
+    q.add_argument("--publication-id", type=int, help="Query a retained publication instead of selecting the latest")
+    sub.add_parser("publication", help="Show metadata for the publication visible to a new reader")
     d = sub.add_parser("demo")
     d.add_argument("--output", type=Path)
     b = sub.add_parser("benchmark")
-    b.add_argument("--output", type=Path, default=ROOT / "docs" / "evidence" / "benchmark.json")
+    b.add_argument("--output", type=Path, default=data_root() / "benchmark.json")
     b.add_argument("--small", type=int, default=100)
     b.add_argument("--large", type=int, default=1000)
     b.add_argument("--repeats", type=int, default=3)
@@ -150,6 +153,9 @@ def main(argv=None):
             emit(status())
         elif command == "query":
             emit(query(**args))
+        elif command == "publication":
+            with pinned_publication() as pinned:
+                emit(pinned.publication)
         elif command == "quarantine":
             emit(quarantine(**args))
         elif command == "demo":

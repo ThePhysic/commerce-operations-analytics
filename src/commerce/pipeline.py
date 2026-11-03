@@ -15,6 +15,7 @@ from psycopg.types.json import Jsonb
 
 from .db import ROOT, locked_connection
 from .ingest import ingest, read_manifest, unresolved_quarantine
+from .schedule import register_expected_start
 
 
 def data_root():
@@ -66,7 +67,9 @@ def _check_sources(conn, as_of):
     unresolved = unresolved_quarantine(conn)
     if unresolved:
         raise ValueError(f"Unresolved quarantined source records; re-deliver matching corrections or explicitly resolve: {unresolved}")
-    rows = {r["source"]: r for r in conn.execute("select * from meta.source_status")}
+    starts = register_expected_start(conn)
+    rows = {r["source"]: r for r in conn.execute("""select source,max(partition_date) latest_partition
+      from meta.files where file_failures=0 and rejected=0 group by source""")}
     for source, rule in config["sources"].items():
         if source not in rows:
             raise ValueError(f"Missing required source: {source}")
@@ -74,8 +77,11 @@ def _check_sources(conn, as_of):
         if age > rule["max_age_days"]:
             raise ValueError(f"Stale source {source}: {age} days at as_of={as_of}")
         if rule.get("daily_complete"):
-            partitions = {r["d"] for r in conn.execute("select distinct partition_date d from meta.files where source=%s and partition_date<=%s", (source, as_of))}
-            expected = _date_range(min(partitions), as_of)
+            partitions = {r["d"] for r in conn.execute("select distinct partition_date d from meta.files where source=%s and partition_date<=%s and file_failures=0 and rejected=0", (source, as_of))}
+            first = starts.get(source)
+            if first is None or first > as_of:
+                raise ValueError(f"Source {source} has no certified coverage at as_of={as_of}")
+            expected = _date_range(first, as_of)
             missing = expected - partitions
             if missing:
                 raise ValueError(f"Incomplete source {source}; missing partitions {sorted(missing)}")
@@ -124,48 +130,54 @@ def _publish(conn, run_id, schema, as_of, changes, *, fail_at=None):
     return {"run_id": run_id, "publication_id": pub, "schema": schema, "row_counts": counts}
 
 
-def run(manifest: Path, *, full_refresh=False, start=None, end=None, as_of=None, lookback_days=7, fail_at=None):
+def run(manifest: Path, *, full_refresh=False, start=None, end=None, as_of=None, lookback_days=7, fail_at=None, expected_start=None):
     if (start is None) != (end is None) or (start and start > end):
         raise ValueError("Provide a valid inclusive --start and --end together")
     if lookback_days < 0:
         raise ValueError("lookback_days must be nonnegative")
-    source_manifest, manifest_hash, verified = read_manifest(manifest)
     explicit_as_of = as_of is not None
-    as_of = as_of or max(date.fromisoformat(e["partition"]) for e, _ in verified)
     run_id = uuid.uuid4().hex
     schema = "build_" + run_id
     started = time.perf_counter()
     with locked_connection() as conn:
-        previous = conn.execute("select * from meta.publications order by publication_id desc limit 1").fetchone()
-        horizon = accepted_horizon(conn)
-        if explicit_as_of and horizon and as_of < horizon:
-            raise ValueError(f"as_of {as_of} precedes accepted source horizon {horizon}; complete that reporting horizon or query a retained publication")
-        if horizon and not explicit_as_of:
-            as_of = max(as_of, horizon)
-        if previous and not explicit_as_of:
-            as_of = max(as_of, previous["as_of"])
-        if end and end > as_of:
-            raise ValueError("Backfill end cannot be after as_of")
-        if previous and as_of < previous["as_of"]:
-            raise ValueError("as_of cannot move backward; query retained publication schemas for past reports")
+        register_expected_start(conn, expected_start)
         # A killed process leaves an inspectable candidate; the lock proves it is no longer running.
         conn.execute("update meta.runs set status='abandoned',ended_at=now(),error_category='interrupted' where status='running'")
-        conn.execute("""insert into meta.runs(run_id,status,manifest_path,manifest_hash,candidate_schema,data_start,data_end,as_of,source_manifest)
-          values(%s,'running',%s,%s,%s,%s,%s,%s,%s)""", (run_id, str(manifest.resolve()), manifest_hash, schema, start, end, as_of, Jsonb(source_manifest)))
+        conn.execute("""insert into meta.runs(run_id,status,manifest_path,candidate_schema,data_start,data_end,as_of)
+          values(%s,'running',%s,%s,%s,%s,%s)""", (run_id, str(manifest.resolve()), schema, start, end, as_of))
         try:
+            source_manifest, manifest_hash, verified = read_manifest(manifest)
+            as_of = as_of or max(date.fromisoformat(e["partition"]) for e, _ in verified)
+            previous = conn.execute("select * from meta.publications order by publication_id desc limit 1").fetchone()
+            horizon = accepted_horizon(conn)
+            if explicit_as_of and horizon and as_of < horizon:
+                raise ValueError(f"as_of {as_of} precedes accepted source horizon {horizon}; complete that reporting horizon or query a retained publication")
+            if horizon and not explicit_as_of:
+                as_of = max(as_of, horizon)
+            if previous and not explicit_as_of:
+                as_of = max(as_of, previous["as_of"])
+            if end and end > as_of:
+                raise ValueError("Backfill end cannot be after as_of")
+            if previous and as_of < previous["as_of"]:
+                raise ValueError("as_of cannot move backward; query retained publication schemas for past reports")
+            if expected_start is not None and expected_start > as_of:
+                raise ValueError("expected_start cannot be after the reporting horizon")
+            conn.execute("update meta.runs set manifest_hash=%s,source_manifest=%s,as_of=%s where run_id=%s",
+                         (manifest_hash, Jsonb(source_manifest), as_of, run_id))
             counts = ingest(conn, run_id, verified, data_root() / "raw", as_of)
             if fail_at == "after-ingest":
                 raise RuntimeError("Injected failure after-ingest")
             max_rejected = json.loads((ROOT / "contracts" / "quality.json").read_text())["max_rejected_rows"]
-            if counts["rejected"] > max_rejected:
-                raise ValueError(f"Quality gate: {counts['rejected']} quarantined rows; fix source/version and rerun")
+            if counts["rejected"] > max_rejected or counts.get("file_failures", 0):
+                raise ValueError(f"Quality gate: {counts['rejected']} quarantined rows, {counts.get('file_failures', 0)} failed files; fix or explicitly resolve and rerun")
             _check_sources(conn, as_of)
             pending = conn.execute("""select c.* from meta.source_changes c where not exists
               (select 1 from meta.publication_sources p where p.source_change_id=c.id) order by c.id""").fetchall()
             catalog_change = any(c["source"] in {"products", "locations"} for c in pending)
             full_refresh = full_refresh or previous is None or catalog_change
             if full_refresh:
-                selected = {date.fromisoformat(r["d"]) for r in conn.execute("""select distinct coalesce(payload->>'sale_date',payload->>'snapshot_date') d
+                selected = {date.fromisoformat(r["d"]) for r in conn.execute("""select distinct case source
+                  when 'order_lines' then payload->>'sale_date' when 'inventory' then payload->>'snapshot_date' end d
                   from landing.records where source in ('order_lines','inventory')""")}
                 applied = pending
             else:
