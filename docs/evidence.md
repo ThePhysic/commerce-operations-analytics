@@ -14,10 +14,15 @@ the committed benchmark artifacts were unchanged.
   with no skipped tests. This used a new disposable database ending in `_test`
   and the suite's dedicated disposable reader/quarantine/ingestion databases.
 - `ruff check . --no-cache` with pinned Ruff **0.12.2**: passed.
-  Formatting was not added to CI: the existing `ruff format --check` would
-  reformat 24 files, outside this polish pass.
+  Formatting was not added to CI: `ruff format --check .` would reformat
+  25 existing files, outside this polish pass.
 - `docker compose config --quiet` and
   `docker compose --profile airflow config --quiet`: passed.
+- The rebuilt `docker compose run --build --rm runner demo` also passed, using
+  connection/artifact-directory overrides for a new disposable database and
+  isolated artifacts. It produced **140 orders, 189 order lines, and 21 refunds**;
+  both publications passed all 100 dbt nodes and replay preserved counts/totals.
+  The regular demo database was left intact.
 - A fresh, separate disposable reference-fixture publication passed all
   **16 dbt models and 84 data tests (100 nodes)**. `dbt docs generate`
   succeeded; its manifest confirmed those counts. The README aggregate SQL

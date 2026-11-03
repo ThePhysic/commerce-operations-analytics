@@ -34,10 +34,10 @@ This starts local PostgreSQL, generates a seven-day seed-42 workload, builds/tes
 | --- | --- |
 | Native Python/PostgreSQL suite | 142 passed in 499.24 s during this polish pass |
 | dbt quality gate | 16 models + 84 data tests = 100 successful nodes |
-| Generated local demo | 140 orders, 189 order lines, 21 refunds; replay preserved counts/totals |
+| Rebuilt Docker demo | 140 orders, 189 order lines, 21 refunds; replay preserved counts/totals |
 | Historical remote CI | Both jobs passed on `499b8e4`; see [that run](https://github.com/ThePhysic/commerce-operations-analytics/actions/runs/41554399790) |
 
-Local tests and dbt counts were rechecked November 2, 2026 (Pacific); the generated-demo and remote-CI rows preserve historical baseline observations. Revision-specific outcomes and reproduction details are in [evidence](docs/evidence.md). The badge and [Actions workflow](https://github.com/ThePhysic/commerce-operations-analytics/actions/workflows/ci.yml) show the latest available CI state; historical success does not establish a later commit's status.
+Local tests, dbt counts, and the Docker demo were rechecked November 2, 2026 (Pacific); the remote-CI row preserves a historical baseline observation. Revision-specific outcomes and reproduction details are in [evidence](docs/evidence.md). The badge and [Actions workflow](https://github.com/ThePhysic/commerce-operations-analytics/actions/workflows/ci.yml) show the latest available CI state; historical success does not establish a later commit's status.
 
 The measured incremental runs were **slower** than full rebuilds on both recorded workloads: **18.13 s vs 16.94 s**, and **33.16 s vs 22.51 s**. See [raw observations and limitations](docs/evidence/benchmark-notes.md); no speedup or production-scale claim is made.
 
