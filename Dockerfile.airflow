@@ -20,4 +20,5 @@ RUN /opt/commerce-venv/bin/python -m pip install --no-cache-dir --no-deps .
 COPY --chown=airflow:root dags /opt/airflow/dags
 ENV COMMERCE_ROOT=/opt/commerce \
     COMMERCE_DATA_DIR=/workspace/data
+RUN chmod 2775 /opt/airflow/state /workspace/data
 WORKDIR /opt/airflow

@@ -16,7 +16,8 @@ with DAG(
     schedule="@daily",
     catchup=False,
     max_active_runs=1,
-    default_args={"owner": "synthetic-commerce", "retries": 1, "retry_delay": timedelta(seconds=30)},
+    default_args={"owner": "synthetic-commerce", "retries": 1,
+                  "retry_delay": timedelta(seconds=30), "depends_on_past": True},
     tags=["synthetic", "batch", "dbt"],
     doc_md="""
 The source producer delivers `/workspace/data/scheduled/YYYY-MM-DD/manifest.json`
@@ -32,9 +33,11 @@ Airflow metadata uses its own SQLite file; commerce facts use PostgreSQL.
         bash_command=(
             'exec /opt/commerce-venv/bin/commerce run '
             '--manifest "/workspace/data/scheduled/$PARTITION_DATE/manifest.json" '
-            '--as-of "$PARTITION_DATE" --lookback-days 7'
+            '--expected-start "$PARTITION_DATE" '
+            '--start "$WINDOW_START" --end "$PARTITION_DATE"'
         ),
-        env={"PARTITION_DATE": "{{ data_interval_start | ds }}"},
+        env={"PARTITION_DATE": "{{ data_interval_start | ds }}",
+             "WINDOW_START": "{{ data_interval_start.subtract(days=7) | ds }}"},
         append_env=True,
         execution_timeout=timedelta(minutes=15),
         do_xcom_push=False,

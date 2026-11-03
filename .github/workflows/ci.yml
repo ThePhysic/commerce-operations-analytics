@@ -42,7 +42,7 @@ jobs:
             requirements-dev.lock
       - run: python -m pip install -r requirements-dev.lock
       - run: python -m pip install --no-deps .
-      - run: python -m pytest -q
+      - run: python -m pytest -q --basetemp=data/pytest
       - name: Validate Compose profiles
         run: docker compose config --quiet
       - name: Build batch image
@@ -56,6 +56,7 @@ jobs:
             warehouse/logs
             warehouse/target/run_results.json
             data/artifacts
+            data/pytest
           if-no-files-found: ignore
 
   airflow:
@@ -67,18 +68,36 @@ jobs:
         env:
           POSTGRES_USER: commerce
           POSTGRES_PASSWORD: synthetic-ci-only
-          POSTGRES_DB: commerce_schedule
+          POSTGRES_DB: commerce_schedule_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U commerce -d commerce_schedule"
+          --health-cmd "pg_isready -U commerce -d commerce_schedule_test"
           --health-interval 3s --health-timeout 3s --health-retries 30
     steps:
       - uses: actions/checkout@v4
+      - name: Build unprivileged batch image
+        run: docker build --tag commerce-batch:ci .
       - name: Build isolated Airflow image
         run: docker build --file Dockerfile.airflow --tag commerce-airflow:ci .
-      - name: Run finite daily DAG against disposable PostgreSQL
-        run: >-
-          docker run --rm --network host --memory 2g --cpus 1.5
-          -e COMMERCE_DATABASE_URL=postgresql://commerce:synthetic-ci-only@127.0.0.1:5432/commerce_schedule
-          --entrypoint /bin/bash commerce-airflow:ci /opt/commerce/scripts/test_airflow.sh
+      - name: Test shared Linux bind mount, missing delivery, recovery and historical retry
+        env:
+          COMMERCE_DATABASE_URL: postgresql://commerce:synthetic-ci-only@127.0.0.1:5432/commerce_schedule_test
+          COMMERCE_UID: "1000"
+          COMMERCE_TEST_STATE_VOLUME: commerce-ci-airflow-state
+          COMMERCE_TEST_LOGS_VOLUME: commerce-ci-airflow-logs
+        run: |
+          set -o pipefail
+          mkdir -p data
+          mkdir -p "$RUNNER_TEMP/commerce-shared-data"
+          export COMMERCE_TEST_MOUNT="type=bind,source=$RUNNER_TEMP/commerce-shared-data,target=/workspace/data"
+          bash scripts/test_container_workflow.sh 2>&1 | tee data/airflow-ci.log
+      - name: Upload Airflow failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: airflow-failure-evidence
+          path: |
+            data/airflow-ci.log
+            ${{ runner.temp }}/commerce-shared-data
+          if-no-files-found: ignore

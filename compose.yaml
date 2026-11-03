@@ -10,6 +10,22 @@ x-database-environment: &database-environment
   COMMERCE_DATA_DIR: /workspace/data
 
 services:
+  data-init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    user: "0:0"
+    environment:
+      COMMERCE_UID: "${COMMERCE_UID:-50000}"
+    volumes:
+      - ./data:/workspace/data
+      - airflow-state:/workspace/airflow-state
+      - airflow-logs:/workspace/airflow-logs
+    entrypoint: [python, /app/scripts/prepare_data.py]
+    mem_limit: 128m
+    cpus: 0.5
+    restart: "no"
+
   postgres:
     image: postgres:16.10-bookworm
     environment:
@@ -34,12 +50,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    user: "${COMMERCE_UID:-50000}:0"
     environment:
       <<: *database-environment
       COMMERCE_ROOT: /app
     volumes:
       - ./data:/workspace/data
     depends_on:
+      data-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
     command: [demo]
@@ -52,6 +71,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.airflow
+    user: "${COMMERCE_UID:-50000}:0"
     environment:
       <<: *database-environment
       COMMERCE_ROOT: /opt/commerce
@@ -76,6 +96,8 @@ services:
       - airflow-state:/opt/airflow/state
       - airflow-logs:/opt/airflow/logs
     depends_on:
+      data-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
     command: [standalone]

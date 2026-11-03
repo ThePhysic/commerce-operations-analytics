@@ -16,7 +16,11 @@ COPY queries ./queries
 COPY fixtures ./fixtures
 COPY scripts ./scripts
 RUN python -m pip install --no-cache-dir --no-deps . \
-    && mkdir -p /workspace/data
+    && useradd --uid 50000 --gid 0 --create-home commerce \
+    && mkdir -p /workspace/data \
+    && chown commerce:root /workspace/data
 
-ENTRYPOINT ["commerce"]
+USER 50000:0
+
+ENTRYPOINT ["/bin/sh", "/app/scripts/runner_entrypoint.sh"]
 CMD ["demo"]

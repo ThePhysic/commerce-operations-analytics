@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .db import ROOT, connect, initialize, locked_connection
 from .generate import generate
-from .pipeline import data_root, run
+from .pipeline import accepted_horizon, data_root, run
 from .reader import pinned_publication
 
 
@@ -49,14 +49,20 @@ def status():
         publications = conn.execute("select * from meta.publications order by publication_id desc limit 2").fetchall()
         last_good = publications[0] if publications else None
         sources = conn.execute("select *,extract(epoch from now()-last_received_at) wall_clock_age_seconds from meta.source_status order by source").fetchall()
+        certified = {r["source"]: r["partition"] for r in conn.execute("""select source,max(partition_date) partition
+          from meta.files where file_failures=0 and rejected=0 group by source""")}
+        horizon = accepted_horizon(conn)
+        target = max([d for d in (horizon, last_good["as_of"] if last_good else None) if d is not None], default=None)
         config = json.loads((ROOT / "contracts" / "quality.json").read_text())
         for source in sources:
-            source["reporting_lag_days"] = (last_good["as_of"] - source["latest_partition"]).days if last_good else None
+            source["latest_certified_partition"] = certified.get(source["source"])
+            source["reporting_lag_days"] = (target - source["latest_certified_partition"]).days if target and source["latest_certified_partition"] else None
             source["freshness_threshold_days"] = config["sources"][source["source"]]["max_age_days"]
         current_counts = last_good["row_counts"] if last_good else {}
         prior_counts = publications[1]["row_counts"] if len(publications)>1 else {}
         return {
             "last_good": last_good,
+            "reporting_target": target,
             "sources": sources,
             "row_count_deltas": {k: current_counts.get(k,0)-prior_counts.get(k,0) for k in current_counts.keys() | prior_counts.keys()},
             "run_failure_rate": conn.execute("select coalesce(count(*) filter(where status in ('failed','abandoned'))::numeric/nullif(count(*),0),0) rate from meta.runs where status<>'operator-resolved'").fetchone()["rate"],

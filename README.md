@@ -14,6 +14,8 @@ docker compose run --build --rm runner demo
 
 This starts the dedicated PostgreSQL service, generates a small synthetic dataset, ingests it, builds/tests the dbt models, and publishes the analytics. The Airflow UI is optional and stays stopped during the batch demo. Generated source files and run artifacts are under the ignored `data/` directory; database state is in the `warehouse-data` named volume.
 
+Runner and Airflow tasks use the same unprivileged container UID (50000) and group 0. A short-lived root `data-init` service prepares their shared artifact directories and dedicated Airflow metadata/log volumes before either starts, including directories left by older versions. It preserves file contents and enables group writes and directory group inheritance. On Linux, set `export COMMERCE_UID="$(id -u)"` before running Compose if generated files should belong to your host account. Windows and macOS can use the default. See [shared artifact ownership and recovery](docs/operations.md) for its bounded paths and link handling.
+
 ```sh
 docker compose run --rm runner status
 docker compose run --rm runner query --name sales
@@ -22,6 +24,12 @@ docker compose run --rm runner query --name fulfillment
 docker compose run --rm runner query --name inventory
 docker compose run --rm runner query --name changes
 ```
+
+Named CLI queries pin a retained publication. For a report spanning several
+commands, obtain its ID with `commerce publication`, then supply that same
+`--publication-id` to each query. Python and SQL consumers should select metadata
+and read that publication's physical schema on the same connection; a transaction
+alone does not pin the live `analytics` views. See [consistent publication reads](docs/reading-publications.md).
 
 Source and mart money is stored in integer cents; the example sales query formats those amounts in currency units by dividing by 100. `net_sales_cents = gross_sales_cents - discount_cents - refund_cents`; tax and tips are outside the synthetic source model. Refunds in sales marts are attributed to the original sale date. The separate event-date refund mart answers when a refund happened. Published schemas retain what was known at each successful publication, so a later correction can be traced to its source manifest.
 
@@ -36,8 +44,8 @@ The committed password is a deliberately public local synthetic-demo default. Po
 Generate dbt's browsable model documentation and lineage from the published views:
 
 ```sh
-docker compose run --rm -e DBT_TARGET_SCHEMA=analytics -e DBT_TARGET_PATH=/workspace/data/dbt-docs --entrypoint dbt runner docs generate --project-dir /app/warehouse --profiles-dir /app/warehouse
-docker compose run --rm -p 127.0.0.1:8081:8080 -e DBT_TARGET_SCHEMA=analytics -e DBT_TARGET_PATH=/workspace/data/dbt-docs --entrypoint dbt runner docs serve --project-dir /app/warehouse --profiles-dir /app/warehouse --host 0.0.0.0 --port 8080 --no-browser
+docker compose run --rm -e DBT_TARGET_SCHEMA=analytics -e DBT_TARGET_PATH=/workspace/data/dbt-docs -e DBT_LOG_PATH=/workspace/data/dbt-docs/logs --entrypoint dbt runner docs generate --project-dir /app/warehouse --profiles-dir /app/warehouse
+docker compose run --rm -p 127.0.0.1:8081:8080 -e DBT_TARGET_SCHEMA=analytics -e DBT_TARGET_PATH=/workspace/data/dbt-docs -e DBT_LOG_PATH=/workspace/data/dbt-docs/logs --entrypoint dbt runner docs serve --project-dir /app/warehouse --profiles-dir /app/warehouse --host 0.0.0.0 --port 8080 --no-browser
 ```
 
 Open <http://localhost:8081> while the second command is running. These commands inspect the existing publication; they do not publish another dataset.
@@ -55,7 +63,7 @@ The second delivery is a replay: stable keys, source versions, and payload hashe
 
 Without `--as-of`, a run uses the latest of its manifest partitions, the last successful reporting date, and the durable accepted source horizon. That horizon includes source-defined event/effective dates and order payment/fulfillment dates, including accepted data from failed runs. An explicit `--as-of` earlier than that durable horizon is rejected. Supply complete required daily feed deliveries through the resulting reporting horizon when recovering; retained publication schemas provide earlier published answers.
 
-Contract failures preserve original payloads in quarantine with actionable reasons. Compatible extra fields are retained; required-field/type failures and unsupported positive schema versions are raw-landed and quarantined. Every unresolved rejected record blocks publication. A valid redelivery resolves only its matching source/business key at a version at least as recent as the rejected correction; unrelated clean rows or empty files cannot clear it. Rows without a recoverable key require an explicit audited operator decision. Inspect them with `commerce quarantine list` and record a disposition with `commerce quarantine resolve --id N --reason "producer-confirmed explanation"`. Resolved quarantine records and original raw bytes remain available. See [quarantine recovery](docs/quarantine.md) for commands, version rules, and audit details. A conflicting payload with the same business key and version is rejected rather than arbitrarily choosing a winner.
+Contract failures preserve original inputs in quarantine with actionable reasons. Compatible extra fields are retained; required-field/type failures and unsupported positive schema versions are raw-landed and quarantined. Every unresolved record, file, or conflict issue blocks publication. Ordinary row validation failures resolve through a valid matching source/business key at an equal or higher version. Conflicting payloads claiming the same version require a strictly newer version or an audited operator disposition; replaying the first variant cannot choose a winner. File-level failures and rows without a recoverable key require an explicit audited decision. Inspect them with `commerce quarantine list` and record a disposition with `commerce quarantine resolve --id N --reason "producer-confirmed explanation"`. Storage-incompatible payloads retain a safe encoded representation and their original immutable raw bytes. See [quarantine recovery](docs/quarantine.md) for commands, version rules, and audit details.
 
 Fault injection stops a run after source ingestion, before publication, or inside the publication transaction:
 
@@ -89,7 +97,17 @@ Open <http://localhost:8080>, sign in as `admin` using that generated password, 
 docker compose -p commerce-schedule exec airflow airflow dags backfill commerce_batch --start-date 2024-01-01 --end-date 2024-01-09
 ```
 
-The task uses a seven-day lookback (the current date plus seven prior dates) so a refund arriving today can update its earlier sale date. The CLI remains available for selected-date historical reprocessing outside that window without starting Airflow. `catchup=False` avoids automatically creating years of historical runs. Airflow retries finite failed tasks once; publication still requires application and dbt quality checks. Unpause the current daily schedule only after supplying source deliveries for those dates; the historical fixture does not fabricate today's feed.
+The task rebuilds its logical date plus seven prior dates so a refund arriving that day can update its earlier sale date. It registers the logical date as an expected delivery before reading the manifest. That durable expectation prevents a missing first delivery from silently becoming a shorter successful history. Each daily task also depends on its preceding interval's success. After restoring a failed delivery, pause the DAG and wait for active work to stop. For a failed January 1 and blocked January 2:
+
+```sh
+docker compose -p commerce-schedule exec airflow airflow dags pause commerce_batch
+docker compose -p commerce-schedule exec airflow python /opt/commerce/scripts/recover_intervals.py --start 2024-01-01 --end 2024-01-02 --reason "Restored source delivery"
+docker compose -p commerce-schedule exec airflow airflow dags backfill commerce_batch --start-date 2024-01-01 --end-date 2024-01-09
+```
+
+The helper preserves run/task history and records its reason and state changes. See [the recovery guide](docs/operations.md).
+
+Historical retries keep the current reporting horizon and rebuild the original interval's window, so clearing an old successful task after a later publication does not move the reporting clock backward. The CLI remains available for selected-date corrections outside that window without starting Airflow. `catchup=False` avoids automatically creating years of historical runs. Airflow retries finite failed tasks once; publication still requires application and dbt quality checks. Unpause the current daily schedule only after supplying source deliveries for those dates; the historical fixture does not fabricate today's feed.
 
 ## Resource profiles
 
@@ -97,6 +115,8 @@ The task uses a seven-day lookback (the current date plus seven prior dates) so 
 | --- | --- | --- | --- |
 | Batch | PostgreSQL + one runner | 384 MiB + 1536 MiB | Required pipeline, tests, queries, backfills |
 | Airflow UI | PostgreSQL + Airflow | 384 MiB + 2048 MiB | Optional scheduler/UI; includes its task subprocess |
+
+The shared `data-init` service has a 128 MiB cap and exits before either application starts.
 
 Docker/WSL overhead is additional. Allocate about 4 GiB to Docker for the batch demo; allow more when using the Airflow UI. Avoid running a separate batch runner concurrently with the Airflow profile on a constrained laptop. Start with the small sample and increase synthetic scale only after measuring. No broker, Spark cluster, frontend framework, or Kubernetes is required.
 
@@ -121,7 +141,7 @@ python -m pytest -q
 
 Activate the virtual environment before the `pip` and `pytest` commands. Set `COMMERCE_TEST_DATABASE_URL` to a disposable test database to run the integration suite; those tests may recreate its project schemas. Quarantine regressions use a separate `commerce_quarantine_test` database and require `CREATE DATABASE`, or a precreated disposable database supplied through `COMMERCE_QUARANTINE_TEST_DATABASE_URL`. `COMMERCE_DATABASE_URL` configures CLI connections; the standard `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, and `PGDATABASE` variables are also supported. `COMMERCE_ROOT` identifies this repository's models/contracts/queries when running an installed package outside the root. `COMMERCE_DATA_DIR` chooses the generated-data directory.
 
-CI runs the deterministic source and PostgreSQL/dbt integration tests, checks Compose configuration, builds the batch image, and independently builds/parses the Airflow DAG. Test and benchmark evidence are described in [the evidence guide](docs/evidence.md). A successful code build is not a substitute for the runtime correctness checks.
+CI runs the deterministic source and PostgreSQL/dbt integration tests, checks Compose configuration, and builds both images. Its Linux bind-mount workflow starts with host-UID-1000 and legacy root-owned paths, runs the initializer, generates/stages data through the runner, and executes the actual Airflow DAG through missing-delivery failure, recovery, and a historical retry. [The operations guide](docs/operations.md) describes the same disposable harness for a Linux named volume. Test and benchmark evidence are described in [the evidence guide](docs/evidence.md).
 
 ```sh
 docker compose run --rm runner benchmark --small 100 --large 1000 --repeats 3 --output /workspace/data/benchmark.json
