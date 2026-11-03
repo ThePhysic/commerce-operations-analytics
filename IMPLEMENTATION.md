@@ -1,25 +1,124 @@
-# Shared implementation contract
+# Technical implementation notes
 
-Core only; Python package `commerce`, dbt PostgreSQL project `warehouse`, source contracts JSON, deterministic fixtures, Airflow local optional UI, Docker Compose. All commerce data synthetic. Root owns runtime/ingestion/publishing/CLI/integration; agents own scopes assigned in messages. Do not commit without root instruction.
+The platform is a finite batch application: Python package `commerce`, the
+PostgreSQL dbt project in `warehouse/`, JSON source contracts, deterministic
+fixtures, Docker Compose, and optional local Airflow scheduling. All commerce
+records are synthetic. See [architecture](docs/architecture.md) for the overall
+design and [the warehouse dictionary](warehouse/README.md) for model definitions.
 
-## Source interface
+## Source interface and contracts
 
-`generate(output: Path, *, days=7, orders_per_day=20, seed=42) -> Path` returns manifest.json. Manifest object: synthetic=true, seed, files list of {source, path (relative), sha256, schema_version:1, partition: YYYY-MM-DD, row_count}. Sources: `order_lines` CSV and remaining JSONL (`refunds`, `inventory`, `products`, `locations`). Every record has integer `version` >=1. Monetary values integer cents. UTC ISO timestamps with +00:00/Z, YYYY-MM-DD dates. No PII. Source-specific fields:
+`generate(output: Path, *, days=7, orders_per_day=20, seed=42) -> Path` returns a
+`manifest.json`. Its object contains `synthetic: true`, `seed`, and `files`, with
+each file declaring `source`, relative `path`, `sha256`, `schema_version: 1`,
+`partition` (`YYYY-MM-DD`), and `row_count`.
 
-- order_lines: line_id, order_id, location_id, product_id, sale_date, quantity (positive int), unit_price_cents, discount_cents, status (paid/fulfilled/cancelled), paid_at (nullable), fulfilled_at (nullable), version. Cancelled lines contribute zero sales. Per-order lifecycle timestamps/status consistent across lines. Business key line_id.
-- refunds: refund_id, line_id, refund_date, amount_cents (positive), version. Key refund_id.
-- inventory: snapshot_id, location_id, product_id, snapshot_date, expected_quantity, actual_quantity (nonnegative int), version. Key snapshot_id; one location/product/date.
-- products: product_id, name, category, effective_at (UTC), version. Key product_id + effective_at (history rows).
-- locations: location_id, name, region, effective_at (UTC), version. Key location_id + effective_at.
+Every record has an integer source `version` of at least 1, bounded by PostgreSQL
+integer storage. Money uses integer cents, dates use `YYYY-MM-DD`, and timestamps
+are UTC ISO values with `Z` or `+00:00`. There is no PII. The authoritative
+[contract files](contracts/) specify fields, storage limits, null policies,
+cadence, ownership, and keys.
 
-Contract files source JSON contain required/type/key/field definitions/cadence/owner/null policy. Additive unknown fields allowed, missing/type-invalid required fields quarantined; breaking schema_version rejects file. Contracts and generator owned by generator agent.
+| Source | Format / business key | Fields beyond the key |
+| --- | --- | --- |
+| `order_lines` | CSV / `line_id` | `order_id`, `location_id`, `product_id`, `sale_date`, positive `quantity`, `unit_price_cents`, `discount_cents`, `status` (paid/fulfilled/cancelled), nullable `paid_at`/`fulfilled_at`, `version` |
+| `refunds` | JSONL / `refund_id` | `line_id`, `refund_date`, positive `amount_cents`, `version` |
+| `inventory` | JSONL / `snapshot_id` | `location_id`, `product_id`, `snapshot_date`, nonnegative `expected_quantity`/`actual_quantity`, `version`; unique location/product/day |
+| `products` | JSONL / `product_id` + `effective_at` | `name`, `category`, `version` |
+| `locations` | JSONL / `location_id` + `effective_at` | `name`, `region`, `version` |
 
-## Warehouse interface
+Per-order status and lifecycle timestamps must agree across order lines.
+Cancelled lines contribute zero sales. Compatible additive fields are retained;
+missing/type-invalid required fields and unsupported positive schema versions
+are quarantined with immutable raw evidence. File, record, and conflicting-version
+issues all block publication while unresolved. A valid matching equal-or-newer
+version can resolve an ordinary record issue; a conflict requires a strictly
+newer version or an audited operator disposition. File/unkeyed failures require
+an explicit disposition. See [quarantine recovery](docs/quarantine.md).
 
-Canonical durable source table `landing.records` fields source text, business_key text, version int, payload jsonb, payload_hash text, raw_path text, run_id text, ingested_at timestamptz. Unique source/business_key. Ingestion uses higher version; same-version different payload is conflict/quarantine. All source current records retained across runs. Raw files immutable content addressed. Provenance attached through models. Staging views select JSON casts from landing.records filtered source. Names stg_order_lines/stg_refunds/stg_inventory/stg_products/stg_locations.
+## Canonical storage and reporting horizon
 
-Each run dbt uses isolated target schema `build_<uuidhex>` via DBT_TARGET_SCHEMA and env-based profiles (PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE). `COMMERCE_RUN_ID` set. `meta.reprocess_dates(run_id text, business_date date)` lists dates selected for reprocessing. Incremental fact/mart models: root clones prior physical tables into candidate schema, then dbt pre-hook deletes rows of selected date partitions before inserting selected-date data (supports rows disappearing). Shared macro handles this. Dimensions rebuild each run. Full refresh builds entire warehouse. Candidate schema has source facts and final marts, tests run before publish. Root atomically publishes analytics views, preserves physical previous schema for history. Publication history snapshots + source manifests explain deltas.
+Immutable raw files are content-addressed. `landing.records` holds the current
+canonical source state with columns `source`, `business_key`, `version`,
+`payload` (JSONB), `payload_hash`, `raw_path`, `run_id`, and `ingested_at`, unique
+on `(source, business_key)`. Higher versions replace earlier canonical values;
+different payloads claiming the same version are conflicts. Current records are
+retained across runs. The staging views `stg_order_lines`, `stg_refunds`,
+`stg_inventory`, `stg_products`, and `stg_locations` cast their source's JSON fields.
 
-Facts: fct_order_line partition sale_date; fct_refund partition sale_date (joins line_id to original sale, also refund_date); fct_fulfillment partition sale_date (one order); fct_inventory_snapshot partition snapshot_date. Marts: mart_daily_location_sales partition sale_date, mart_refund_rate partition sale_date, mart_fulfillment_sla partition sale_date, mart_inventory_variance partition snapshot_date; optional mart_refunds_by_event_date full table for refund reporting. Dim history uses lead(effective_at), history surrogate md5(key/effective_at), expose current. Sales gross=quantity*price excluding cancelled; discounts line-level; net=gross-discounts-attributable refunds; taxes/tips absent. median/p95 via percentile_cont. Refund rate=distinct refunded orders / noncancelled orders, cancellation rate cancelled/all orders. Stockout=actual_quantity=0; variance=actual-expected. Multiple refund rows aggregated before joining sales prevents fanout. Retain provenance fields.
+One PostgreSQL advisory lock serializes ingestion, build, and publication.
+The default reporting horizon includes incoming partitions, the last successful
+reporting date, and all durably accepted event/effective/lifecycle dates,
+including accepted data from failed runs. An explicitly earlier `--as-of` fails.
+Expected daily coverage is registered before scheduled manifest access; only
+clean accepted deliveries certify coverage. Deterministic reporting-date
+freshness and wall-clock source age are reported separately.
 
-Root pipeline uses dbt build (all tests) then transactionally swaps stable analytics views; ledger meta.runs, meta.files, meta.quarantine, meta.publications, meta.publication_sources, meta.reprocess_dates owned by root. One advisory lock serializes ingestion+build+publication. Latest source times vs deterministic source partition as-of date used for reproducible freshness; wall-clock freshness exposed separately. CLI: generate --output PATH --days N --orders-per-day N --seed N; run --manifest PATH [--full-refresh] [--start YYYY-MM-DD --end YYYY-MM-DD] [--as-of YYYY-MM-DD] [--lookback-days N] [--fail-at after-ingest|before-publish]; status; query --name sales|refunds|fulfillment|inventory|changes; demo; benchmark. DB URL env COMMERCE_DATABASE_URL or PG*.
+## Warehouse boundaries and grains
+
+Each run builds in `build_<uuidhex>` using `DBT_TARGET_SCHEMA`, `COMMERCE_RUN_ID`,
+and the standard `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, and `PGDATABASE`
+profile settings. `meta.reprocess_dates(run_id, business_date)` selects the
+inclusive date partitions to recompute. Incremental builds clone prior physical
+tables, retaining rows and indexes, then delete and replace selected partitions;
+deletion also removes stale output when the recomputed partition becomes empty.
+Dimensions and the event-date refund summary rebuild in full. Catalog changes
+trigger a full refresh so historical dimension attribution is recomputed.
+
+| Model group | Grain / partition |
+| --- | --- |
+| `dim_product`, `dim_location` | Business ID/effective timestamp; type-2 half-open validity, `lead(effective_at)`, infinity for the current row, MD5 history surrogate |
+| `fct_order_line` | Line ID / sale date |
+| `fct_refund` | Refund ID / original sale date; retains refund event date |
+| `fct_fulfillment` | Order ID / sale date |
+| `fct_inventory_snapshot` | Location/product/day / snapshot date |
+| Sales, refund-rate, fulfillment-SLA marts | Sale date/location |
+| Inventory-variance mart | Snapshot date/location/product |
+| `mart_refunds_by_event_date` | Refund date/location; full rebuild |
+
+Sales use the paid timestamp for dimension history, or sale-day UTC midnight for
+unpaid cancellations. Inventory uses the instant immediately before the next
+UTC midnight, including changes during the snapshot day and excluding versions
+effective exactly at the next midnight.
+
+Gross is quantity * unit price excluding cancellations; discounts apply once per
+line. Net subtracts discounts and refunds attributed to the sale date. Refunds
+are aggregated per line before joining sales to prevent fanout. Tax and tips
+are absent. Refund rate is distinct refunded orders / noncancelled orders;
+cancellation rate is cancelled / all orders. Fulfillment median/p95 use
+`percentile_cont`. Stockout means zero actual units; variance is actual minus
+expected. Line, refund, and inventory facts retain source run, raw path, payload
+hash, version, and ingestion timestamp. Order-level fulfillment retains arrays
+of source runs and raw paths; its order key joins back to line facts.
+
+## Quality gate and publication
+
+`dbt build` must pass every model and data test in the candidate schema before
+publication. One final database transaction replaces the stable `analytics`
+views and records publication/source lineage. A failure rolls the switch back;
+the last successful physical schema remains available. Retained publication
+schemas and source manifests explain corrections and deltas.
+
+Live `analytics` views follow the latest publication. A multi-query consumer
+selects a publication and reads its physical schema on the same connection;
+starting a transaction alone does not pin those live views. The CLI's named
+queries use the [publication-reader interface](docs/reading-publications.md).
+
+Audit metadata includes `meta.runs`, `meta.files`, `meta.quarantine`,
+`meta.source_changes`, `meta.publications`, `meta.publication_sources`,
+`meta.reprocess_dates`, and `meta.source_expectations`.
+
+## Command-line interface
+
+`commerce generate` accepts output, days, orders per day, and seed. `commerce run`
+accepts a manifest, full refresh, explicit start/end dates, as-of date, lookback,
+and expected-start coverage. Failure probes are `after-ingest`, `before-publish`,
+and `during-publish`. Reader/operator commands are `status`, `publication`,
+`query --name sales|refunds|fulfillment|inventory|refund_events|changes` (with optional
+`--publication-id`), and `quarantine list|resolve`. `demo` and `benchmark` provide
+reproducible synthetic workflows.
+
+`COMMERCE_DATABASE_URL` or standard `PG*` variables configure the connection;
+`COMMERCE_ROOT` locates repository resources and `COMMERCE_DATA_DIR` selects the
+artifact directory. See [the command walkthrough](docs/local-demo.md) and
+[operations](docs/operations.md) for examples and recovery procedures.

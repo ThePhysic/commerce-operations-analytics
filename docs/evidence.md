@@ -1,8 +1,42 @@
 # Reproducing correctness and performance evidence
 
-All inputs are synthetic. Exact reference fixtures live under `fixtures/`; larger data is deterministically generated from a committed seed and workload parameters. The authoritative observed benchmark artifact is a JSON report produced by `commerce benchmark`, with its runtime context and limitations. Never replace an unexecuted scenario with a claimed successful result.
+All inputs are synthetic. Exact reference fixtures live under `fixtures/`; larger data is deterministically generated from a committed seed and workload parameters. The authoritative observed benchmark artifact is a JSON report produced by `commerce benchmark`, with its runtime context and limitations. Each observation below belongs to its recorded revision and date; it does not establish success for later commits. See the [current Actions workflow](https://github.com/ThePhysic/commerce-operations-analytics/actions/workflows/ci.yml) for revision-specific CI.
 
-## Observed local batch run
+## Documentation polish checks (November 2, 2026, Pacific)
+
+The presentation pass began at public `main`
+`499b8e47eba9cf9fa3e920f19c852426746407bb`. Changes are limited to public
+documentation, a real demo image, repository Topics, and adding the already
+pinned Ruff command to CI. Runtime code, source contracts, models, tests, and
+the committed benchmark artifacts were unchanged.
+
+- `python -m pytest -q --basetemp=data/polish/pytest`: **142 passed in 499.24 s**,
+  with no skipped tests. This used a new disposable database ending in `_test`
+  and the suite's dedicated disposable reader/quarantine/ingestion databases.
+- `ruff check . --no-cache` with pinned Ruff **0.12.2**: passed.
+  Formatting was not added to CI: the existing `ruff format --check` would
+  reformat 24 files, outside this polish pass.
+- `docker compose config --quiet` and
+  `docker compose --profile airflow config --quiet`: passed.
+- A fresh, separate disposable reference-fixture publication passed all
+  **16 dbt models and 84 data tests (100 nodes)**. `dbt docs generate`
+  succeeded; its manifest confirmed those counts. The README aggregate SQL
+  returned **9000 gross, 600 discounts, 1500 refunds, 6900 net**, in cents,
+  matching `fixtures/reference/expected.json`.
+- Relative Markdown destinations/anchors, both Mermaid flowcharts (Mermaid
+  11.12.0 parser), and the workflow/badge URLs were checked successfully.
+  The public workflow page and branch-main SVG badge returned HTTP 200.
+- The [actual dbt lineage screenshot](images/dbt-lineage.png) was captured from
+  that synthetic reference catalog in an isolated browser profile and inspected
+  for credentials, private host identifiers, and personal data.
+  [Reproduce the SQL and image](local-demo.md#reproduce-the-reference-sql-result).
+
+These are executed local observations for this documentation pass, not a claim
+about a later commit's remote CI. Consult the current Actions workflow linked
+above for the pushed revision's status. Earlier measurements and review records
+below retain their original counts, hashes, and scope.
+
+## Historical local batch run
 
 On 2026-11-02, the Docker batch demo completed on the Windows development machine using Docker Desktop's Linux engine and the Compose PostgreSQL service. The deterministic seed-42, seven-day, 20-orders/day workload produced 140 orders, 189 order lines, and 21 refund events. The initial build passed its dbt publication gate. Replaying the same manifest accepted the duplicate delivery with zero canonical source changes and identical published fact/mart counts and sales totals. These are synthetic demo observations, not production throughput claims.
 
@@ -22,7 +56,7 @@ The Docker invocation of `scripts/test_airflow.sh` exited 0. Run `374f050c0c3e40
 
 At that earlier revision, the smoke harness parsed the DAG, migrated temporary metadata, ran one backfill interval, and asserted warehouse publication and quality results. This historical observation establishes one daily scheduler execution; it does not describe the revised shared-volume/failure-recovery harness below. Detailed original logs/artifacts remain ignored under `data/airflow-smoke.log` and `data/airflow-smoke/`.
 
-## Follow-up fixes and current validation
+## Historical follow-up fixes and validation
 
 The follow-up audit identified seven missing cases: Linux artifact ownership,
 old-snapshot reads during publication, end-of-day dimension attribution, additive
@@ -30,11 +64,11 @@ partition-field collisions, durable input rejection, skipped initial daily
 coverage, and conflicting-version resolution. Their implementation and regression
 coverage are recorded in the [follow-up review record](reviews/followup-fixes.md).
 
-The complete revised native suite passed **142 tests in 555.36 seconds** with
-disposable PostgreSQL databases. Independent Astra medium review additionally
+At the follow-up review, the complete revised native suite passed **142 tests in 555.36 seconds** with
+disposable PostgreSQL databases. AI-assisted Astra medium review additionally
 reran the inventory-history and scheduling regressions: **3 passed in 105.36
-seconds**. Current successful dbt builds have 16 models and 84 data tests (100
-nodes), including independent inventory closing-day history validation. Older
+seconds**. The successful dbt builds at that revision had 16 models and 84 data tests (100
+nodes), including a separate inventory closing-day history validation. Older
 83-test/99-node observations in this report are historical, not current counts.
 
 The updated `scripts/test_container_workflow.sh` prepares real Linux shared
@@ -53,7 +87,7 @@ Linux-bind round also exited 0: it migrated the previous round's actual SQLite
 and log volumes, preserved raw evidence, executed the missing-first-delivery
 failure, recovered both days to 54 lines, and retried January 1 without moving
 the reporting clock back from January 2. The exact dbt documentation command in
-the README also completed under UID 1000, generating its 16-model/84-test catalog.
+the [local demo guide](local-demo.md) also completed under UID 1000, generating its 16-model/84-test catalog.
 
 Three independent recovery-helper guard checks rejected scheduled tasks, a live
 backfill lease, and an unpaused DAG without changing interval/task/history rows.
@@ -69,9 +103,9 @@ The documented `docker compose run --build --rm runner demo` command also exited
 artifact history. Initial ownership migration completed; the healthy pipeline
 published 189 order lines and 21 refunds, and its replay preserved counts/totals.
 
-## Correctness demonstrations
+## Earlier correctness demonstrations (historical)
 
-Observed on 2026-11-02: 56 source/manifest unit checks passed, and all seven
+At the earlier implementation stage on 2026-11-02: 56 source/manifest unit checks passed, and all seven
 PostgreSQL/dbt integration scenarios passed across directed runs after the
 affected changes. The integration checks covered exact reference metrics and
 dimension history; replay; late-refund publication deltas and full-rebuild
@@ -127,4 +161,14 @@ Keep a small observed report in `docs/evidence/` only after it has been executed
 
 ## Review and publication
 
-Independent adversarial review checks the implemented behavior and evidence against the project goal. Review findings must be fixed and the updated implementation reviewed again before claiming a clean verdict. Private GitHub visibility, a matching pushed commit, and passing checks are separate final verification steps; a repository being created alone does not complete them.
+The [original review](reviews/astra-review.md) and [follow-up review](reviews/followup-fixes.md)
+are **AI-assisted adversarial code reviews** using GPT-6 Astra with medium
+reasoning effort. They preserve reproducible findings, fixes, probes, and scoped
+conclusions at the named revisions. They are not third-party human audits,
+security certifications, or formal independent assessments.
+
+The repository is public. Historical [Actions run 41554399790](https://github.com/ThePhysic/commerce-operations-analytics/actions/runs/41554399790)
+passed both `pipeline` and `airflow` at public `main` commit `499b8e4`, reviewed
+November 2, 2026 (Pacific). This is evidence for that commit only. Check the
+[current workflow](https://github.com/ThePhysic/commerce-operations-analytics/actions/workflows/ci.yml)
+for later pushed commits rather than inferring their status from this record.

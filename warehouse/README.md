@@ -38,8 +38,9 @@ once per item. Cancelled lines contribute zero gross/discount amounts and
 cannot have refunds. Cumulative refunds cannot exceed a line's paid amount.
 
 Dimension lookups use the paid timestamp; unpaid cancellations use sale-day
-UTC midnight. Inventory uses snapshot-day UTC midnight because feeds contain
-dates rather than intraday observation timestamps. History intervals end at
+UTC midnight. Inventory resolves history immediately before the following UTC
+midnight, including intraday changes on the snapshot date and excluding a
+version effective exactly at the next midnight. History intervals end at
 the next effective timestamp, with infinity for the current version. The
 reference dataset changes a product category and a location region on January
 4 to show that earlier facts retain their historical labels.
@@ -72,7 +73,7 @@ Facts retain the source ingestion run, immutable raw file path, payload hash,
 source version and ingestion timestamp; order-level fulfillment stores arrays
 of source runs and paths. Mart grain keys join back to facts. dbt `ref` and
 `source` dependencies supply model lineage. Builds retain their manifest and
-run-results artifacts under the runtime artifact directory. The README's
+run-results artifacts under the runtime artifact directory. The [local demo guide](../docs/local-demo.md)
 `dbt docs generate` command creates the catalog in its chosen documentation
 output directory.
 

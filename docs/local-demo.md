@@ -1,0 +1,195 @@
+# Local demo and development guide
+
+Run all commands from the repository root. All business data is synthetic.
+
+## Ten-minute local demo
+
+Install Docker with Compose v2 and Linux containers. The commands work in PowerShell and a POSIX shell from the repository root. First-time image/dependency downloads can take longer than ten minutes.
+
+```sh
+docker compose run --build --rm runner demo
+```
+
+This starts the dedicated PostgreSQL service, generates a small synthetic dataset, ingests it, builds/tests the dbt models, and publishes the analytics. The Airflow UI is optional and stays stopped during the batch demo. Generated source files and run artifacts are under the ignored `data/` directory; database state is in the `warehouse-data` named volume.
+
+Runner and Airflow tasks use the same unprivileged container UID (50000) and group 0. A short-lived root `data-init` service prepares their shared artifact directories and dedicated Airflow metadata/log volumes before either starts, including directories left by older versions. It preserves file contents and enables group writes and directory group inheritance. On Linux, set `export COMMERCE_UID="$(id -u)"` before running Compose if generated files should belong to your host account. Windows and macOS can use the default. See [shared artifact ownership and recovery](operations.md) for its bounded paths and link handling.
+
+```sh
+docker compose run --rm runner status
+docker compose run --rm runner query --name sales
+docker compose run --rm runner query --name refunds
+docker compose run --rm runner query --name fulfillment
+docker compose run --rm runner query --name inventory
+docker compose run --rm runner query --name changes
+```
+
+Named CLI queries pin a retained publication. For a report spanning several
+commands, obtain its ID with `commerce publication`, then supply that same
+`--publication-id` to each query. Python and SQL consumers should select metadata
+and read that publication's physical schema on the same connection; a transaction
+alone does not pin the live `analytics` views. See [consistent publication reads](reading-publications.md).
+
+Source and mart money is stored in integer cents; the example sales query formats those amounts in currency units by dividing by 100. `net_sales_cents = gross_sales_cents - discount_cents - refund_cents`; tax and tips are outside the synthetic source model. Refunds in sales marts are attributed to the original sale date. The separate event-date refund mart answers when a refund happened. Published schemas retain what was known at each successful publication, so a later correction can be traced to its source manifest.
+
+Connect a SQL client to `localhost:55432`, database `commerce_analytics`, user `commerce`, password `synthetic-local-only`, or query inside the service:
+
+```sh
+docker compose exec postgres psql -U commerce -d commerce_analytics -c "select * from analytics.mart_daily_location_sales order by sale_date, location_id;"
+```
+
+The committed password is a deliberately public local synthetic-demo default. Ports bind to loopback. Use separate credentials and proper access controls before adapting this design for another environment.
+
+Generate dbt's browsable model documentation and lineage from the published views:
+
+```sh
+docker compose run --rm -e DBT_TARGET_SCHEMA=analytics -e DBT_TARGET_PATH=/workspace/data/dbt-docs -e DBT_LOG_PATH=/workspace/data/dbt-docs/logs --entrypoint dbt runner docs generate --project-dir /app/warehouse --profiles-dir /app/warehouse
+docker compose run --rm -p 127.0.0.1:8081:8080 -e DBT_TARGET_SCHEMA=analytics -e DBT_TARGET_PATH=/workspace/data/dbt-docs -e DBT_LOG_PATH=/workspace/data/dbt-docs/logs --entrypoint dbt runner docs serve --project-dir /app/warehouse --profiles-dir /app/warehouse --host 0.0.0.0 --port 8080 --no-browser
+```
+
+Open <http://localhost:8081> while the second command is running. These commands inspect the existing publication; they do not publish another dataset.
+
+## Reproduce the reference SQL result
+
+The compact README result uses the committed reference fixture, not the larger
+generated `demo` workload. Create a **new, empty disposable database** so retained
+source state cannot change the result. If this name already exists, choose a fresh
+name ending in `_test` and use it consistently; do not reset an existing database.
+
+```sh
+docker compose up -d postgres
+docker compose exec postgres psql -U commerce -d postgres -c "CREATE DATABASE commerce_reference_test;"
+docker compose run --rm -e COMMERCE_DATABASE_URL=postgresql://commerce:synthetic-local-only@postgres:5432/commerce_reference_test runner run --manifest /app/fixtures/reference/manifest.json --as-of 2024-01-05
+docker compose exec postgres psql -U commerce -d commerce_reference_test -c "select sum(gross_sales_cents) as gross_sales_cents, sum(discount_cents) as discount_cents, sum(refund_cents) as refund_cents, sum(net_sales_cents) as net_sales_cents from analytics.mart_daily_location_sales;"
+```
+
+Expected and observed totals are `9000 | 600 | 1500 | 6900` cents, as recorded in
+[the fixture's expected answers](../fixtures/reference/expected.json). The dbt
+publication gate must succeed before the query runs. To browse this fixture's dbt
+catalog, add the same `COMMERCE_DATABASE_URL` override and
+`-e PGDATABASE=commerce_reference_test` to both documentation commands above.
+
+### Reproduce the lineage screenshot
+
+After publishing the reference fixture, run the `dbt docs generate` and
+`dbt docs serve` commands above with those reference-database overrides. Open
+<http://localhost:8081/#!/model/model.commerce_analytics.mart_daily_location_sales>,
+then select **View Lineage Graph** in the lower-right corner. The committed
+[screenshot](images/dbt-lineage.png) is an unmodified browser-content capture of
+that actual graph at a 1600 x 1050 viewport, with the default resource selection.
+It shows model/test labels, without credentials, host identifiers, or customer
+records. Node placement can vary with browser/layout timing.
+
+Use an isolated browser profile or private window when capturing. Keep generated
+catalog/manifest artifacts ignored: they can contain environment-specific paths
+and connection metadata that do not belong in a public screenshot or commit.
+
+## Run and reprocess files
+
+```sh
+docker compose run --rm runner generate --output /workspace/data/incoming --days 7 --orders-per-day 20 --seed 42
+docker compose run --rm runner run --manifest /workspace/data/incoming/manifest.json
+docker compose run --rm runner run --manifest /workspace/data/incoming/manifest.json
+docker compose run --rm runner run --manifest /workspace/data/incoming/manifest.json --start 2024-01-01 --end 2024-01-03
+```
+
+The second delivery is a replay: stable keys, source versions, and payload hashes keep the canonical facts from duplicating. A selected-date rebuild uses inclusive UTC dates. `--lookback-days` bounds routine reprocessing: a value of 7 includes the current as-of date plus seven prior dates, for eight inclusive dates. Use an explicit historical range for corrections outside that window. `--full-refresh` rebuilds the complete analytical result from retained canonical sources. A manifest declares each source file, expected rows, partition, schema version, and checksum; never edit a file without regenerating its manifest.
+
+Without `--as-of`, a run uses the latest of its manifest partitions, the last successful reporting date, and the durable accepted source horizon. That horizon includes source-defined event/effective dates and order payment/fulfillment dates, including accepted data from failed runs. An explicit `--as-of` earlier than that durable horizon is rejected. Supply complete required daily feed deliveries through the resulting reporting horizon when recovering; retained publication schemas provide earlier published answers.
+
+Contract failures preserve original inputs in quarantine with actionable reasons. Compatible extra fields are retained; required-field/type failures and unsupported positive schema versions are raw-landed and quarantined. Every unresolved record, file, or conflict issue blocks publication. Ordinary row validation failures resolve through a valid matching source/business key at an equal or higher version. Conflicting payloads claiming the same version require a strictly newer version or an audited operator disposition; replaying the first variant cannot choose a winner. File-level failures and rows without a recoverable key require an explicit audited decision. Inspect them with `commerce quarantine list` and record a disposition with `commerce quarantine resolve --id N --reason "producer-confirmed explanation"`. Storage-incompatible payloads retain a safe encoded representation and their original immutable raw bytes. See [quarantine recovery](quarantine.md) for commands, version rules, and audit details.
+
+Fault injection stops a run after source ingestion, before publication, or inside the publication transaction:
+
+```sh
+docker compose run --rm runner run --manifest /workspace/data/incoming/manifest.json --fail-at after-ingest
+docker compose run --rm runner run --manifest /workspace/data/incoming/manifest.json
+docker compose run --rm runner run --manifest /workspace/data/incoming/manifest.json --fail-at before-publish
+docker compose run --rm runner run --manifest /workspace/data/incoming/manifest.json --fail-at during-publish
+docker compose run --rm runner status
+```
+
+The injected runs are expected to exit unsuccessfully. The `during-publish` case raises after the first view replacement and proves that the transaction rolls it back. Source ingestion remains auditable; analysts keep the last successful publication until a retry passes the quality gate. The test suite exercises late corrections, schema changes, interrupted runs, and backfill parity with deterministic assertions.
+
+## Airflow scheduling and backfills
+
+Airflow runs in its own image and profile. Its SQLite metadata is separate from the PostgreSQL analytical database. The local `SequentialExecutor` intentionally runs one task at a time; the application also serializes writers with a database advisory lock. Airflow's dependencies and dbt's dependencies live in separate Python environments.
+
+```sh
+docker compose run --rm runner generate --output /workspace/data/incoming --days 7 --orders-per-day 20 --seed 42
+docker compose run --rm --entrypoint python runner /app/scripts/stage_intervals.py --manifest /workspace/data/incoming/manifest.json --output /workspace/data/scheduled
+docker compose stop
+docker compose -p commerce-schedule --profile airflow up --build -d postgres airflow
+docker compose -p commerce-schedule exec airflow cat /opt/airflow/state/standalone_admin_password.txt
+```
+
+This uses a separate Compose project and fresh analytical/metadata volumes for the historical arrival-by-day demonstration. The earlier batch project is stopped to release the loopback ports. Reusing a database with a later published as-of date would correctly prevent moving its reporting clock backward.
+
+Open <http://localhost:8080>, sign in as `admin` using that generated password, and inspect `commerce_batch`. DAGs start paused. The producer must place a valid source manifest at `data/scheduled/YYYY-MM-DD/manifest.json` **before** a run. The staging utility creates these deliveries, includes only catalog versions effective by each day, and emits explicit empty daily files when a feed has no events. The daily DAG processes the UTC date represented by its data interval; it does not run a streaming consumer. Request the historical backfill while keeping the daily schedule paused:
+
+```sh
+docker compose -p commerce-schedule exec airflow airflow dags backfill commerce_batch --start-date 2024-01-01 --end-date 2024-01-09
+```
+
+The task rebuilds its logical date plus seven prior dates so a refund arriving that day can update its earlier sale date. It registers the logical date as an expected delivery before reading the manifest. That durable expectation prevents a missing first delivery from silently becoming a shorter successful history. Each daily task also depends on its preceding interval's success. After restoring a failed delivery, pause the DAG and wait for active work to stop. For a failed January 1 and blocked January 2:
+
+```sh
+docker compose -p commerce-schedule exec airflow airflow dags pause commerce_batch
+docker compose -p commerce-schedule exec airflow python /opt/commerce/scripts/recover_intervals.py --start 2024-01-01 --end 2024-01-02 --reason "Restored source delivery"
+docker compose -p commerce-schedule exec airflow airflow dags backfill commerce_batch --start-date 2024-01-01 --end-date 2024-01-09
+```
+
+The helper preserves run/task history and records its reason and state changes. See [the recovery guide](operations.md).
+
+Historical retries keep the current reporting horizon and rebuild the original interval's window, so clearing an old successful task after a later publication does not move the reporting clock backward. The CLI remains available for selected-date corrections outside that window without starting Airflow. `catchup=False` avoids automatically creating years of historical runs. Airflow retries finite failed tasks once; publication still requires application and dbt quality checks. Unpause the current daily schedule only after supplying source deliveries for those dates; the historical fixture does not fabricate today's feed.
+
+## Resource profiles
+
+| Profile | Services | Container memory caps | Purpose |
+| --- | --- | --- | --- |
+| Batch | PostgreSQL + one runner | 384 MiB + 1536 MiB | Required pipeline, tests, queries, backfills |
+| Airflow UI | PostgreSQL + Airflow | 384 MiB + 2048 MiB | Optional scheduler/UI; includes its task subprocess |
+
+The shared `data-init` service has a 128 MiB cap and exits before either application starts.
+
+Docker/WSL overhead is additional. Allocate about 4 GiB to Docker for the batch demo; allow more when using the Airflow UI. Avoid running a separate batch runner concurrently with the Airflow profile on a constrained laptop. Start with the small sample and increase synthetic scale only after measuring. No broker, Spark cluster, frontend framework, or Kubernetes is required.
+
+```sh
+docker compose --profile airflow stop airflow
+docker compose down
+docker compose -p commerce-schedule --profile airflow down
+```
+
+Stopping containers preserves named volumes. Repeated publications preserve historical schemas, so disk usage grows with publication count; this is deliberate evidence retention rather than a production retention policy. To start an entirely separate test project, use a distinct Compose project name with `docker compose -p commerce-scratch ...`.
+
+## Development and verification
+
+Use Python 3.12 and a disposable PostgreSQL database. Dependencies are pinned in `requirements.lock` and `requirements-dev.lock`.
+
+```sh
+python -m venv .venv
+python -m pip install -r requirements-dev.lock
+python -m pip install --no-deps -e .
+python -m ruff check .
+python -m pytest -q
+```
+
+Activate the virtual environment before the `pip` and `pytest` commands. Set `COMMERCE_TEST_DATABASE_URL` to a disposable test database to run the integration suite; those tests may recreate its project schemas. Quarantine regressions use a separate `commerce_quarantine_test` database and require `CREATE DATABASE`, or a precreated disposable database supplied through `COMMERCE_QUARANTINE_TEST_DATABASE_URL`. `COMMERCE_DATABASE_URL` configures CLI connections; the standard `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, and `PGDATABASE` variables are also supported. `COMMERCE_ROOT` identifies this repository's models/contracts/queries when running an installed package outside the root. `COMMERCE_DATA_DIR` chooses the generated-data directory.
+
+CI runs Ruff, the deterministic source and PostgreSQL/dbt integration tests, checks Compose configuration, and builds both images. Its Linux bind-mount workflow starts with host-UID-1000 and legacy root-owned paths, runs the initializer, generates/stages data through the runner, and executes the actual Airflow DAG through missing-delivery failure, recovery, and a historical retry. [The operations guide](operations.md) describes the same disposable harness for a Linux named volume. Test and benchmark evidence are described in [the evidence guide](evidence.md).
+
+```sh
+docker compose run --rm runner benchmark --small 100 --large 1000 --repeats 3 --output /workspace/data/benchmark.json
+```
+
+Benchmark workloads are generated, not committed in full. Compare full and incremental runtimes only within the recorded hardware/runtime context. The report includes the work performed by each path and does not claim end-to-end exactly-once delivery or unmeasured performance gains.
+
+## Design and model reference
+
+- [Architecture and publication protocol](architecture.md)
+- [Business definitions and data dictionary](data-dictionary.md)
+- [Design tradeoffs and operational limits](tradeoffs.md)
+- [Reproducible checks and evidence](evidence.md)
+- [Source contracts](../contracts/) and [versioned example SQL](../queries/)
+- [dbt models, tests, and lineage](../warehouse/)
+
+The complete core is batch ingestion, validated modeling, incremental correction/backfill, quality gates, SQL consumption, and reproducible evidence. The project scope remains a finite batch platform.
