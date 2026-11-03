@@ -9,7 +9,7 @@
     "refund_id": {"type": "string", "description": "Stable synthetic refund event ID; distinct partial refunds have distinct IDs"},
     "line_id": {"type": "string", "description": "Original order line; multiple refunds may refer to one line"},
     "refund_date": {"type": "date", "description": "UTC refund event date; may follow sale by days"},
-    "amount_cents": {"type": "integer", "minimum": 1, "description": "Merchandise refund; cumulative amount cannot exceed discounted line total"},
-    "version": {"type": "integer", "minimum": 1, "description": "Monotonically increasing correction version per refund_id"}
+    "amount_cents": {"type": "integer", "minimum": 1, "maximum": 9223372036854775807, "description": "Merchandise refund; cumulative amount cannot exceed discounted line total"},
+    "version": {"type": "integer", "minimum": 1, "maximum": 2147483647, "description": "Monotonically increasing correction version per refund_id"}
   }
 }

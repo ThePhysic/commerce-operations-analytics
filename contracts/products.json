@@ -10,6 +10,6 @@
     "name": {"type": "string", "description": "Synthetic product display name"},
     "category": {"type": "string", "description": "Historically meaningful product category"},
     "effective_at": {"type": "timestamp", "description": "Inclusive UTC start of category/name history row"},
-    "version": {"type": "integer", "minimum": 1, "description": "Correction version within product_id/effective_at key"}
+    "version": {"type": "integer", "minimum": 1, "maximum": 2147483647, "description": "Correction version within product_id/effective_at key"}
   }
 }

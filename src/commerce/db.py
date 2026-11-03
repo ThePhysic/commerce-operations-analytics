@@ -43,6 +43,7 @@ def initialize(conn):
       accepted bigint default 0, rejected bigint default 0, changed bigint default 0,
       error_category text, error text, dbt_results jsonb, elapsed_seconds double precision);
     alter table meta.runs add column if not exists source_manifest jsonb;
+    alter table meta.runs add column if not exists file_failures bigint not null default 0;
     create table if not exists landing.records (
       source text not null, business_key text not null, version integer not null,
       payload jsonb not null, payload_hash text not null, raw_path text not null,
@@ -54,6 +55,8 @@ def initialize(conn):
       partition_date date not null, expected_rows bigint not null, received bigint not null,
       accepted bigint not null, rejected bigint not null,
       primary key(run_id,source,source_path));
+    alter table meta.files add column if not exists file_failures bigint not null default 0;
+    alter table meta.files add column if not exists observed_rows bigint;
     create table if not exists meta.quarantine (
       id bigint generated always as identity primary key, run_id text not null references meta.runs,
       source text not null, raw_path text not null, row_number bigint not null,
@@ -63,12 +66,17 @@ def initialize(conn):
     alter table meta.quarantine add column if not exists resolved_at timestamptz;
     alter table meta.quarantine add column if not exists resolved_by_run_id text references meta.runs(run_id);
     alter table meta.quarantine add column if not exists resolution_reason text;
+    alter table meta.quarantine add column if not exists issue_kind text not null default 'record'
+      check (issue_kind in ('record','file','conflict'));
+    update meta.quarantine set issue_kind='conflict'
+      where issue_kind='record' and reason like 'Conflicting payload at the same source version%';
     create index if not exists quarantine_unresolved_identity on meta.quarantine(source,business_key,source_version)
       where resolved_at is null;
     create table if not exists meta.source_changes (
       id bigint generated always as identity primary key, run_id text not null references meta.runs,
       source text not null, business_key text not null, before_payload jsonb, after_payload jsonb not null,
       raw_path text not null);
+    alter table meta.source_changes add column if not exists after_payload_hash text;
     create table if not exists meta.publications (
       publication_id bigint generated always as identity primary key,
       run_id text unique not null references meta.runs, schema_name text unique not null,
@@ -81,12 +89,12 @@ def initialize(conn):
       run_id text references meta.runs, business_date date, primary key(run_id,business_date));
     create or replace view meta.source_status as
       select source,max(partition_date) latest_partition,max(r.started_at) last_received_at,
-      sum(f.received) received,sum(f.rejected) rejected
+      sum(f.received) received,sum(f.rejected) rejected,sum(f.file_failures) file_failures
       from meta.files f join meta.runs r using(run_id) group by source;
     """)
     # Preserve and identify legacy quarantines when upgrading an existing local
     # database. Unrecoverable identities remain unresolved for operator review.
-    for row in conn.execute("select id,source,payload from meta.quarantine where resolved_at is null and (business_key is null or source_version is null)").fetchall():
+    for row in conn.execute("select id,source,payload from meta.quarantine where resolved_at is null and issue_kind<>'file' and (business_key is null or source_version is null)").fetchall():
         try:
             key, version = quarantine_identity(row["source"], row["payload"])
         except ContractError:

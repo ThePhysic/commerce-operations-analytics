@@ -11,12 +11,12 @@
     "location_id": {"type": "string", "description": "Selling location business key"},
     "product_id": {"type": "string", "description": "Product business key"},
     "sale_date": {"type": "date", "description": "UTC date to which revenue and attributable refunds belong"},
-    "quantity": {"type": "integer", "minimum": 1, "description": "Positive units on line"},
-    "unit_price_cents": {"type": "integer", "minimum": 0, "description": "Merchandise unit price excluding tax/tips"},
-    "discount_cents": {"type": "integer", "minimum": 0, "description": "Total discount for line, at most quantity times unit price"},
+    "quantity": {"type": "integer", "minimum": 1, "maximum": 9223372036854775807, "description": "Positive units on line; quantity times unit price must also fit bigint"},
+    "unit_price_cents": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807, "description": "Merchandise unit price excluding tax/tips"},
+    "discount_cents": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807, "description": "Total discount for line, at most quantity times unit price"},
     "status": {"type": "string", "accepted_values": ["paid", "fulfilled", "cancelled"], "description": "Current source lifecycle status; cancelled lines contribute no revenue"},
     "paid_at": {"type": "timestamp", "nullable": true, "description": "Payment timestamp; mandatory for paid/fulfilled"},
     "fulfilled_at": {"type": "timestamp", "nullable": true, "description": "Fulfillment timestamp; mandatory only for fulfilled and not before paid_at"},
-    "version": {"type": "integer", "minimum": 1, "description": "Monotonically increasing correction version per line_id"}
+    "version": {"type": "integer", "minimum": 1, "maximum": 2147483647, "description": "Monotonically increasing correction version per line_id"}
   }
 }

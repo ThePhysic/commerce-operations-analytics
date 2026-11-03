@@ -84,7 +84,8 @@ def ingest_bundle(conn, manifest, root):
     run_id = uuid.uuid4().hex
     conn.execute("insert into meta.runs(run_id,status) values(%s,'running')", (run_id,))
     counts = ingest(conn, run_id, verified, root / "raw", AS_OF)
-    conn.execute("update meta.runs set status=%s,ended_at=now() where run_id=%s", ("failed" if counts["rejected"] else "ingested", run_id))
+    failed = counts["rejected"] or counts["file_failures"]
+    conn.execute("update meta.runs set status=%s,ended_at=now() where run_id=%s", ("failed" if failed else "ingested", run_id))
     return run_id, counts
 
 
@@ -105,6 +106,7 @@ def test_unrelated_clean_same_partition_does_not_clear_rejected_key(database):
     _, rejected = deliver_line(conn, root, "bad", line_record(quantity="bad"))
     assert rejected["rejected"] == 1
     before = unresolved_quarantine(conn)
+    assert before[0]["issue_kind"] == "record"
     assert [(q["business_key"], q["source_version"]) for q in before] == [("O004_1", 2)]
     _, clean = deliver_line(conn, root, "unrelated", line_record("O005_1", version=1))
     assert clean["changed"] == 0
@@ -144,6 +146,7 @@ def test_unsupported_schema_retains_readable_identity_for_supported_redelivery(d
     rejected = unresolved_quarantine(conn)
     assert rejected[0]["business_key"] == "O004_1"
     assert rejected[0]["source_version"] == 2
+    assert rejected[0]["issue_kind"] == "record"
     deliver_line(conn, root, "supported", line_record())
     assert not unresolved_quarantine(conn)
 

@@ -10,6 +10,6 @@
     "name": {"type": "string", "description": "Synthetic location display name"},
     "region": {"type": "string", "description": "Historically meaningful reporting region"},
     "effective_at": {"type": "timestamp", "description": "Inclusive UTC start of region/name history row"},
-    "version": {"type": "integer", "minimum": 1, "description": "Correction version within location_id/effective_at key"}
+    "version": {"type": "integer", "minimum": 1, "maximum": 2147483647, "description": "Correction version within location_id/effective_at key"}
   }
 }
