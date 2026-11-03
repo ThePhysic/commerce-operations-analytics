@@ -1,5 +1,9 @@
 # Business definitions and data dictionary
 
+Inventory dimensions use the catalog effective immediately before the following
+UTC midnight. An intraday change applies to that day's closing snapshot; a version
+beginning exactly at the following midnight belongs to the following day.
+
 All business records are synthetic. Amounts are integer cents and timestamps are UTC. Dates identify business-day partitions in UTC; no regional daylight-saving conversion is implied.
 
 ## Source contracts

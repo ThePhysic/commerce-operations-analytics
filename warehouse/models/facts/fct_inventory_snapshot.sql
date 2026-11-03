@@ -9,9 +9,11 @@ select s.*, p.product_key, l.location_key,
 from snapshots s
 left join {{ ref('dim_product') }} p
     on s.product_id = p.product_id
-    and (s.snapshot_date::timestamp at time zone 'UTC') >= p.valid_from
-    and (s.snapshot_date::timestamp at time zone 'UTC') < p.valid_to
+    -- The observation belongs to the instant just before the next UTC day.
+    -- A version starting exactly at that boundary belongs to tomorrow.
+    and ((s.snapshot_date + interval '1 day') at time zone 'UTC') > p.valid_from
+    and ((s.snapshot_date + interval '1 day') at time zone 'UTC') <= p.valid_to
 left join {{ ref('dim_location') }} l
     on s.location_id = l.location_id
-    and (s.snapshot_date::timestamp at time zone 'UTC') >= l.valid_from
-    and (s.snapshot_date::timestamp at time zone 'UTC') < l.valid_to
+    and ((s.snapshot_date + interval '1 day') at time zone 'UTC') > l.valid_from
+    and ((s.snapshot_date + interval '1 day') at time zone 'UTC') <= l.valid_to

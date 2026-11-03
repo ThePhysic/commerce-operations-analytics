@@ -129,7 +129,7 @@ models:
       - name: sale_date
         tests: [not_null]
   - name: fct_inventory_snapshot
-    description: One location-product-day inventory observation. Variance is actual minus expected; a stockout is observed actual quantity equal to zero, rather than inferred lost sales.
+    description: One location-product-day end-of-day inventory observation. Historical dimensions use the version effective immediately before the following UTC midnight; a version starting at that midnight belongs to the next day. Variance is actual minus expected; a stockout is observed actual quantity equal to zero, rather than inferred lost sales.
     columns:
       - name: snapshot_id
         tests: [not_null, unique]
