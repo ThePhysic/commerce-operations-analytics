@@ -64,6 +64,11 @@ Linux mounts/databases, not the regular demo database. Logs remain ignored under
 `data/audit_ops/bind-workflow-final.log`, `default-helper-recovery.log`, and
 `recovery-guards.log`.
 
+The documented `docker compose run --build --rm runner demo` command also exited
+0 on the Windows Docker Desktop workspace with its existing bind-mounted
+artifact history. Initial ownership migration completed; the healthy pipeline
+published 189 order lines and 21 refunds, and its replay preserved counts/totals.
+
 ## Correctness demonstrations
 
 Observed on 2026-11-02: 56 source/manifest unit checks passed, and all seven
